@@ -1,5 +1,6 @@
 import { FakeModelProvider } from "@/agent/providers/fake-model-provider";
 import { SingleAgent } from "@/agent/single-agent";
+import { CalculatorTool } from "@/tools/calculator-tool";
 import { runExperiment } from "@/experiments/run-experiment";
 
 export async function POST(request: Request): Promise<Response> {
@@ -31,7 +32,8 @@ export async function POST(request: Request): Promise<Response> {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        const agent = new SingleAgent(new FakeModelProvider());
+        const calculatorTool = new CalculatorTool();
+        const agent = new SingleAgent(new FakeModelProvider(), [calculatorTool]);
 
         await runExperiment(task, agent, (event) => {
           if (streamCancelled) {
