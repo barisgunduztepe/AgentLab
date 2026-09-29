@@ -53,14 +53,8 @@ Bunlar sonraki sürümlerde değerlendirilecek.
 
 ## Geliştirme yaklaşımı
 
-Proje küçük ve doğrulanabilir sürümler halinde geliştirilecek:
+Proje küçük, test edilebilir ve geri alınabilir milestone'larla geliştirilecek. Her adımda önce kavram öğrenilecek; ardından küçük implementasyon, test, canlı doğrulama ve Git checkpoint'i gelecek.
 
-- v0.1 → Single Agent
-- v0.2 → Tool System
-- v0.3 → Multi-Agent
-- v0.4 → Agent Arena
-- v0.5 → Experiment History
-- v0.6 → Automation
-- v1.0 → kullanılabilir AgentLab
+**Mevcut milestone:** v0.2.4 — Tool Observability
 
-Her sürüm mümkün olduğunca test edilebilir ve çalışan durumda bırakılacak.
+Sürümlerin ve milestone'ların ayrıntılı durumu için [ROADMAP.md](ROADMAP.md) dosyasına bakın.
