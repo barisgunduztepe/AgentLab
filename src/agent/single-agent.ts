@@ -2,6 +2,7 @@ import type { ModelProvider, ModelResponse } from "./model-provider";
 import type { Tool } from "../tools/tool";
 
 const MAX_CALCULATOR_NESTING_DEPTH = 32;
+const MAX_TOOL_EXECUTIONS = 3;
 
 export type ToolLifecycleSignal =
   | { type: "tool.started"; toolName: string }
@@ -17,7 +18,7 @@ export class SingleAgent {
   async run(
     task: string,
     onToolLifecycle?: (signal: ToolLifecycleSignal) => void,
-  ): Promise<ModelResponse> {
+  ): Promise<Extract<ModelResponse, { type: "text" }>> {
     const calculatorTool = this.tools.find((tool) => tool.name === "calculator");
 
     if (calculatorTool && isSimpleArithmeticExpression(task)) {
@@ -35,8 +36,57 @@ export class SingleAgent {
       return { type: "text", text: output };
     }
 
-    return this.modelProvider.generateResponse(task);
+    let response = await this.modelProvider.generateResponse(task);
+    let executionCount = 0;
+
+    while (response.type === "tool_call") {
+      if (
+        typeof response.toolName !== "string" ||
+        response.toolName.trim().length === 0 ||
+        typeof response.input !== "string"
+      ) {
+        throw new Error("Tool call is invalid.");
+      }
+
+      const toolName = response.toolName;
+      const toolInput = response.input;
+      const tool = this.tools.find((allowedTool) => allowedTool.name === toolName);
+
+      if (!tool) {
+        throw new Error("Requested tool is unavailable.");
+      }
+
+      if (executionCount >= MAX_TOOL_EXECUTIONS) {
+        throw new Error("Tool execution limit reached.");
+      }
+
+      onToolLifecycle?.({ type: "tool.started", toolName: tool.name });
+      executionCount += 1;
+
+      let toolResult: string;
+      try {
+        toolResult = await tool.execute(toolInput);
+      } catch (error) {
+        onToolLifecycle?.({ type: "tool.failed", toolName: tool.name });
+        throw error;
+      }
+
+      onToolLifecycle?.({ type: "tool.completed", toolName: tool.name });
+      const continuationPrompt = buildToolContinuationPrompt(task, tool.name, toolResult);
+      response = await this.modelProvider.generateResponse(continuationPrompt);
+    }
+
+    return response;
   }
+}
+
+function buildToolContinuationPrompt(task: string, toolName: string, toolResult: string): string {
+  return [
+    `Original user task:\n${task}`,
+    `Tool executed: ${toolName}`,
+    `Tool result:\n${toolResult}`,
+    "Continue the original task using this tool result. Return a final text response unless another tool call is necessary.",
+  ].join("\n\n");
 }
 
 function isSimpleArithmeticExpression(task: string): boolean {

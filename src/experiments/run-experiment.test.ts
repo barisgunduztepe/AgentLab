@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ModelProvider } from "../agent/model-provider";
+import { FakeModelProvider } from "../agent/providers/fake-model-provider";
 import { SingleAgent } from "../agent/single-agent";
 import { CalculatorTool } from "../tools/calculator-tool";
+import type { Tool } from "../tools/tool";
 import { runExperiment } from "./run-experiment";
 import type { ExperimentEvent } from "./types";
 
@@ -93,24 +95,103 @@ describe("runExperiment", () => {
     });
   });
 
-  it("preserves tool-call status while omitting its input from experiment events", async () => {
-    const privateInput = "sensitive tool arguments";
+  it.each([
+    { toolName: "unknown-tool-internal", privateValue: "unknown-tool-internal" },
+    { toolName: "   ", privateValue: "Tool call is invalid." },
+  ])("fails safely for an invalid or unknown tool request without starting a tool", async ({ toolName, privateValue }) => {
     const events: ExperimentEvent[] = [];
-    const agent = new SingleAgent({
-      async generateResponse() {
-        return { type: "tool_call", toolName: "calculator", input: privateInput };
+    const agent = new SingleAgent(new FakeModelProvider([
+      { type: "tool_call", toolName, input: "sensitive input" },
+    ]), [new CalculatorTool()]);
+
+    const experiment = await runExperiment("Please calculate this.", agent, (event) => events.push(event));
+
+    expect(experiment.status).toBe("failed");
+    expect(experiment.errorMessage).toBe("Agent görevi tamamlayamadı.");
+    expect(events.map((event) => event.type)).toEqual([
+      "experiment.started",
+      "agent.started",
+      "experiment.failed",
+    ]);
+    expect(JSON.stringify(experiment)).not.toContain(privateValue);
+    expect(JSON.stringify(events)).not.toContain(privateValue);
+    expect(JSON.stringify(events)).not.toContain("sensitive input");
+  });
+
+  it("does not continue the provider after an allowed tool fails", async () => {
+    const rawToolError = "private tool failure details";
+    const events: ExperimentEvent[] = [];
+    const provider = new FakeModelProvider([
+      { type: "tool_call", toolName: "failing", input: "secret arguments" },
+      { type: "text", text: "This response must not be requested." },
+    ]);
+    const generateResponse = vi.spyOn(provider, "generateResponse");
+    const failingTool: Tool = {
+      name: "failing",
+      description: "Fails in a controlled test.",
+      async execute() {
+        throw new Error(rawToolError);
       },
-    });
+    };
 
-    const experiment = await runExperiment("Ask for a calculator", agent, (event) => events.push(event));
+    const experiment = await runExperiment(
+      "Run the failing tool.",
+      new SingleAgent(provider, [failingTool]),
+      (event) => events.push(event),
+    );
 
-    expect(experiment.output).toEqual({ type: "tool_call", toolName: "calculator", status: "not_executed" });
-    expect(events).toContainEqual(expect.objectContaining({
-      type: "agent.completed",
-      output: { type: "tool_call", toolName: "calculator", status: "not_executed" },
-    }));
-    expect(JSON.stringify(experiment)).not.toContain(privateInput);
+    expect(experiment.status).toBe("failed");
+    expect(experiment.errorMessage).toBe("Agent görevi tamamlayamadı.");
+    expect(generateResponse).toHaveBeenCalledOnce();
+    expect(events.map((event) => event.type)).toEqual([
+      "experiment.started",
+      "agent.started",
+      "tool.started",
+      "tool.failed",
+      "experiment.failed",
+    ]);
+    expect(JSON.stringify(experiment)).not.toContain(rawToolError);
+    expect(JSON.stringify(events)).not.toContain("secret arguments");
+    expect(JSON.stringify(events)).not.toContain(rawToolError);
+  });
+
+  it("keeps structured tool input and result out of lifecycle events", async () => {
+    const privateInput = "private input value";
+    const privateResult = "private tool result value";
+    const events: ExperimentEvent[] = [];
+    const provider = new FakeModelProvider([
+      { type: "tool_call", toolName: "private-tool", input: privateInput },
+      { type: "text", text: "Task completed." },
+    ]);
+    const generateResponse = vi.spyOn(provider, "generateResponse");
+    const tool: Tool = {
+      name: "private-tool",
+      description: "Returns private test data.",
+      async execute() {
+        return privateResult;
+      },
+    };
+
+    const experiment = await runExperiment(
+      "Use the private tool.",
+      new SingleAgent(provider, [tool]),
+      (event) => events.push(event),
+    );
+
+    expect(experiment.status).toBe("completed");
+    expect(experiment.output).toEqual({ type: "text", text: "Task completed." });
+    expect(generateResponse).toHaveBeenCalledTimes(2);
+    expect(generateResponse.mock.calls[1][0]).toContain(privateResult);
     expect(JSON.stringify(events)).not.toContain(privateInput);
+    expect(JSON.stringify(events)).not.toContain(privateResult);
+    expect(events.map((event) => event.type)).toEqual([
+      "experiment.started",
+      "agent.started",
+      "tool.started",
+      "tool.completed",
+      "agent.completed",
+      "experiment.completed",
+    ]);
   });
 
   it("returns a safe failed result without leaking provider error details", async () => {

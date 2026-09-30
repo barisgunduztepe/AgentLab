@@ -32,9 +32,7 @@ export async function runExperiment(
         ...signal,
       });
     });
-    output = response.type === "text"
-      ? response
-      : { type: "tool_call", toolName: response.toolName, status: "not_executed" };
+    output = response;
   } catch {
     const endedAt = new Date().toISOString();
     const durationMs = Date.now() - startTimeMs;

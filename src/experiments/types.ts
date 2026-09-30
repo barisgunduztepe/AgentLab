@@ -1,9 +1,7 @@
 import type { ModelResponse } from "../agent/model-provider";
 
 export type ExperimentStatus = "running" | "completed" | "failed";
-export type ExperimentOutput =
-  | Extract<ModelResponse, { type: "text" }>
-  | { type: "tool_call"; toolName: string; status: "not_executed" };
+export type ExperimentOutput = Extract<ModelResponse, { type: "text" }>;
 
 export type ExperimentEventType =
   | "experiment.started"

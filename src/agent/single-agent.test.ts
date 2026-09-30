@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ModelProvider } from "./model-provider";
+import { FakeModelProvider } from "./providers/fake-model-provider";
 import { SingleAgent, type ToolLifecycleSignal } from "./single-agent";
 import { CalculatorTool } from "../tools/calculator-tool";
 import type { Tool } from "../tools/tool";
@@ -67,13 +68,76 @@ describe("SingleAgent", () => {
     expect(receivedPrompt).toBe(task);
   });
 
-  it("returns structured tool calls without executing them", async () => {
-    const response = { type: "tool_call" as const, toolName: "calculator", input: "12 * 8" };
-    const execute = vi.fn(async () => "should not execute");
-    const calculatorTool: Tool = { name: "calculator", description: "Calculates.", execute };
-    const generateResponse = vi.fn(async () => response);
+  it("executes a structured tool call and continues the model with its result", async () => {
+    const task = "Calculate 12 * 8 and explain the result.";
+    const calculator = new CalculatorTool();
+    const execute = vi.fn((input: string) => calculator.execute(input));
+    const calculatorTool: Tool = { ...calculator, execute };
+    const provider = new FakeModelProvider([
+      { type: "tool_call", toolName: "calculator", input: "12 * 8" },
+      { type: "text", text: "The answer is 96." },
+    ]);
+    const generateResponse = vi.spyOn(provider, "generateResponse");
+    const agent = new SingleAgent(provider, [calculatorTool]);
 
-    await expect(new SingleAgent({ generateResponse }, [calculatorTool]).run("Calculate 12 * 8")).resolves.toEqual(response);
-    expect(execute).not.toHaveBeenCalled();
+    await expect(agent.run(task)).resolves.toEqual({ type: "text", text: "The answer is 96." });
+
+    expect(execute).toHaveBeenCalledExactlyOnceWith("12 * 8");
+    expect(generateResponse).toHaveBeenCalledTimes(2);
+    expect(generateResponse.mock.calls[0][0]).toBe(task);
+    expect(generateResponse.mock.calls[1][0]).toContain(task);
+    expect(generateResponse.mock.calls[1][0]).toContain("Tool executed: calculator");
+    expect(generateResponse.mock.calls[1][0]).toContain("Tool result:\n96");
+    expect(generateResponse.mock.calls[1][0]).toContain("Continue the original task");
+  });
+
+  it("executes repeated valid tool calls within the budget", async () => {
+    const calculator = new CalculatorTool();
+    const execute = vi.fn((input: string) => calculator.execute(input));
+    const calculatorTool: Tool = { ...calculator, execute };
+    const provider = new FakeModelProvider([
+      { type: "tool_call", toolName: "calculator", input: "12 * 8" },
+      { type: "tool_call", toolName: "calculator", input: "96 + 1" },
+      { type: "text", text: "The final result is 97." },
+    ]);
+    const generateResponse = vi.spyOn(provider, "generateResponse");
+    const agent = new SingleAgent(provider, [calculatorTool]);
+
+    await expect(agent.run("Calculate and increment.")).resolves.toEqual({
+      type: "text",
+      text: "The final result is 97.",
+    });
+
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(generateResponse).toHaveBeenCalledTimes(3);
+    expect(generateResponse.mock.calls[1][0]).toContain("Tool result:\n96");
+    expect(generateResponse.mock.calls[2][0]).toContain("Tool result:\n97");
+  });
+
+  it("executes at most three tools and sends the third result before rejecting a fourth call", async () => {
+    const execute = vi.fn(async (input: string) => `result-${input}`);
+    const countedTool: Tool = { name: "counted", description: "Counts test calls.", execute };
+    const provider = new FakeModelProvider([
+      { type: "tool_call", toolName: "counted", input: "one" },
+      { type: "tool_call", toolName: "counted", input: "two" },
+      { type: "tool_call", toolName: "counted", input: "three" },
+      { type: "tool_call", toolName: "counted", input: "four" },
+    ]);
+    const generateResponse = vi.spyOn(provider, "generateResponse");
+    const signals: ToolLifecycleSignal[] = [];
+    const agent = new SingleAgent(provider, [countedTool]);
+
+    await expect(agent.run("Use the counted tool repeatedly.", (signal) => signals.push(signal))).rejects.toThrow(
+      "Tool execution limit reached.",
+    );
+
+    expect(execute).toHaveBeenCalledTimes(3);
+    expect(generateResponse).toHaveBeenCalledTimes(4);
+    expect(generateResponse.mock.calls[3][0]).toContain("Tool result:\nresult-three");
+    expect(signals.map((signal) => signal.type)).toEqual([
+      "tool.started", "tool.completed",
+      "tool.started", "tool.completed",
+      "tool.started", "tool.completed",
+    ]);
   });
 });

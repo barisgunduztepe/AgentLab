@@ -311,9 +311,7 @@ export default function Home() {
               fontFamily: "inherit",
             }}
           >
-            {output.type === "text"
-              ? output.text
-              : `Tool requested: ${output.toolName}\nStatus: ${output.status.replace("_", " ")}`}
+            {output.text}
           </pre>
         )}
       </section>
