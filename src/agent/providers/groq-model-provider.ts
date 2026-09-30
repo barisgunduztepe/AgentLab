@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { ModelProvider } from "../model-provider";
+import type { ModelProvider, ModelResponse } from "../model-provider";
 
 export class GroqModelProvider implements ModelProvider {
   private readonly client: OpenAI;
@@ -17,14 +17,14 @@ export class GroqModelProvider implements ModelProvider {
     });
   }
 
-  async generateText(prompt: string): Promise<string> {
+  async generateResponse(prompt: string): Promise<ModelResponse> {
     try {
       const response = await this.client.responses.create({
         model: "openai/gpt-oss-20b",
         input: prompt,
       });
 
-      return response.output_text;
+      return { type: "text", text: response.output_text };
     } catch {
       throw new Error("Groq text generation failed.");
     }

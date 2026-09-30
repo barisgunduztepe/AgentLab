@@ -9,14 +9,14 @@ describe("runExperiment", () => {
   it("emits tool events between agent start and completion for calculator tasks", async () => {
     const events: ExperimentEvent[] = [];
     const agent = new SingleAgent(
-      { async generateText() { return "unused"; } },
+      { async generateResponse() { return { type: "text", text: "unused" }; } },
       [new CalculatorTool()],
     );
 
     const experiment = await runExperiment("12 * 8", agent, (event) => events.push(event));
 
     expect(experiment.status).toBe("completed");
-    expect(experiment.output).toBe("96");
+    expect(experiment.output).toEqual({ type: "text", text: "96" });
     expect(events.map((event) => event.type)).toEqual([
       "experiment.started",
       "agent.started",
@@ -35,7 +35,7 @@ describe("runExperiment", () => {
     const events: ExperimentEvent[] = [];
     const rawToolError = "Division by zero is not allowed.";
     const agent = new SingleAgent(
-      { async generateText() { return "unused"; } },
+      { async generateResponse() { return { type: "text", text: "unused" }; } },
       [new CalculatorTool()],
     );
 
@@ -57,9 +57,9 @@ describe("runExperiment", () => {
 
   it("completes an experiment and emits its lifecycle events in order", async () => {
     const task = "Check the successful experiment flow.";
-    const output = "Experiment result.";
+    const output = { type: "text" as const, text: "Experiment result." };
     const modelProvider: ModelProvider = {
-      async generateText() {
+      async generateResponse() {
         return output;
       },
     };
@@ -93,10 +93,30 @@ describe("runExperiment", () => {
     });
   });
 
+  it("preserves tool-call status while omitting its input from experiment events", async () => {
+    const privateInput = "sensitive tool arguments";
+    const events: ExperimentEvent[] = [];
+    const agent = new SingleAgent({
+      async generateResponse() {
+        return { type: "tool_call", toolName: "calculator", input: privateInput };
+      },
+    });
+
+    const experiment = await runExperiment("Ask for a calculator", agent, (event) => events.push(event));
+
+    expect(experiment.output).toEqual({ type: "tool_call", toolName: "calculator", status: "not_executed" });
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "agent.completed",
+      output: { type: "tool_call", toolName: "calculator", status: "not_executed" },
+    }));
+    expect(JSON.stringify(experiment)).not.toContain(privateInput);
+    expect(JSON.stringify(events)).not.toContain(privateInput);
+  });
+
   it("returns a safe failed result without leaking provider error details", async () => {
     const rawProviderError = "private provider response and credential details";
     const modelProvider: ModelProvider = {
-      async generateText() {
+      async generateResponse() {
         throw new Error(rawProviderError);
       },
     };

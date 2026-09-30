@@ -1,7 +1,9 @@
-import type { ModelProvider } from "../model-provider";
+import type { ModelProvider, ModelResponse } from "../model-provider";
 
 export class FakeModelProvider implements ModelProvider {
-  async generateText(prompt: string): Promise<string> {
-    return `[Fake Model] Task received: ${prompt}`;
+  constructor(private readonly response?: ModelResponse) {}
+
+  async generateResponse(prompt: string): Promise<ModelResponse> {
+    return this.response ?? { type: "text", text: `[Fake Model] Task received: ${prompt}` };
   }
 }

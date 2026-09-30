@@ -55,8 +55,8 @@ Bunlar sonraki sürümlerde değerlendirilecek.
 
 Proje küçük, test edilebilir ve geri alınabilir milestone'larla geliştirilecek. Her adımda önce kavram öğrenilecek; ardından küçük implementasyon, test, canlı doğrulama ve Git checkpoint'i gelecek.
 
-**Mevcut durum:** v0.2 Tool System tamamlandı.
+**Mevcut durum:** v0.3.1 Structured Tool-Call Contract tamamlandı.
 
-**Sıradaki milestone:** v0.3.1 — Structured Tool-Call Contract
+**Sıradaki milestone:** v0.3.2 — Bounded Tool Execution Loop
 
 Sürümlerin ve milestone'ların ayrıntılı durumu için [ROADMAP.md](ROADMAP.md) dosyasına bakın.

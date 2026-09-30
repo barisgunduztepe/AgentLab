@@ -1,4 +1,4 @@
-import type { ModelProvider } from "./model-provider";
+import type { ModelProvider, ModelResponse } from "./model-provider";
 import type { Tool } from "../tools/tool";
 
 const MAX_CALCULATOR_NESTING_DEPTH = 32;
@@ -17,7 +17,7 @@ export class SingleAgent {
   async run(
     task: string,
     onToolLifecycle?: (signal: ToolLifecycleSignal) => void,
-  ): Promise<string> {
+  ): Promise<ModelResponse> {
     const calculatorTool = this.tools.find((tool) => tool.name === "calculator");
 
     if (calculatorTool && isSimpleArithmeticExpression(task)) {
@@ -32,10 +32,10 @@ export class SingleAgent {
       }
 
       onToolLifecycle?.({ type: "tool.completed", toolName: calculatorTool.name });
-      return output;
+      return { type: "text", text: output };
     }
 
-    return this.modelProvider.generateText(task);
+    return this.modelProvider.generateResponse(task);
   }
 }
 

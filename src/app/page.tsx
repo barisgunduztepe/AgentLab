@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { ExperimentEvent, ExperimentStatus } from "@/experiments/types";
+import type { ExperimentEvent, ExperimentOutput, ExperimentStatus } from "@/experiments/types";
 
 type UiStatus = ExperimentStatus | "idle";
 
@@ -25,7 +25,7 @@ export default function Home() {
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [endedAt, setEndedAt] = useState<string | null>(null);
   const [durationMs, setDurationMs] = useState<number | null>(null);
-  const [output, setOutput] = useState<string | null>(null);
+  const [output, setOutput] = useState<ExperimentOutput | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -311,7 +311,9 @@ export default function Home() {
               fontFamily: "inherit",
             }}
           >
-            {output}
+            {output.type === "text"
+              ? output.text
+              : `Tool requested: ${output.toolName}\nStatus: ${output.status.replace("_", " ")}`}
           </pre>
         )}
       </section>

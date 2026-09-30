@@ -1,4 +1,9 @@
+import type { ModelResponse } from "../agent/model-provider";
+
 export type ExperimentStatus = "running" | "completed" | "failed";
+export type ExperimentOutput =
+  | Extract<ModelResponse, { type: "text" }>
+  | { type: "tool_call"; toolName: string; status: "not_executed" };
 
 export type ExperimentEventType =
   | "experiment.started"
@@ -17,7 +22,7 @@ export interface Experiment {
   startedAt: string;
   endedAt?: string;
   durationMs?: number;
-  output?: string;
+  output?: ExperimentOutput;
   errorMessage?: string;
 }
 
@@ -32,7 +37,7 @@ export type ExperimentEvent =
   | (ExperimentEventBase & { type: "tool.started"; toolName: string })
   | (ExperimentEventBase & { type: "tool.completed"; toolName: string })
   | (ExperimentEventBase & { type: "tool.failed"; toolName: string })
-  | (ExperimentEventBase & { type: "agent.completed"; output: string })
+  | (ExperimentEventBase & { type: "agent.completed"; output: ExperimentOutput })
   | (ExperimentEventBase & {
       type: "experiment.completed";
       endedAt: string;

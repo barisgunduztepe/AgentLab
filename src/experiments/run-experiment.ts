@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { SingleAgent } from "../agent/single-agent";
-import type { Experiment, ExperimentEvent } from "./types";
+import type { Experiment, ExperimentEvent, ExperimentOutput } from "./types";
 
 export async function runExperiment(
   task: string,
@@ -22,16 +22,19 @@ export async function runExperiment(
     occurredAt: new Date().toISOString(),
   });
 
-  let output: string;
+  let output: ExperimentOutput;
 
   try {
-    output = await agent.run(task, (signal) => {
+    const response = await agent.run(task, (signal) => {
       onEvent({
         experimentId: id,
         occurredAt: new Date().toISOString(),
         ...signal,
       });
     });
+    output = response.type === "text"
+      ? response
+      : { type: "tool_call", toolName: response.toolName, status: "not_executed" };
   } catch {
     const endedAt = new Date().toISOString();
     const durationMs = Date.now() - startTimeMs;

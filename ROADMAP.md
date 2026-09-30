@@ -9,7 +9,8 @@ Bu belge, AgentLab'in mevcut repository durumunu ve onaylanmış geliştirme sı
 - v0.2.4 Tool Observability tamamlandı.
 - API route aktif akışta `FakeModelProvider` kullanıyor.
 - `OpenAIModelProvider` ve `GroqModelProvider` implementasyonları mevcut; aktif uygulama akışına bağlı değiller.
-- Sıradaki milestone: **v0.3.1 Structured Tool-Call Contract**.
+- v0.3.1 Structured Tool-Call Contract tamamlandı.
+- Sıradaki milestone: **v0.3.2 Bounded Tool Execution Loop**.
 
 ## v0.1 — Single Agent Foundation
 
@@ -74,11 +75,13 @@ Event payload'ı varsayılan olarak tool input/output içeriklerini taşımaz. T
 
 ## v0.3 — Intelligent Tool Use
 
-### 👉 v0.3.1 Structured Tool-Call Contract
+### ✅ v0.3.1 Structured Tool-Call Contract
 
 **Amaç:** Modelin metin yanıtına ek olarak yapılandırılmış tool isteği döndürebilmesini tanımlamak.
 
-### ⬜ v0.3.2 Bounded Tool Execution Loop
+**Durum:** Tamamlandı. `ModelProvider` text/tool-call yanıtlarını ortak type-safe contract ile taşıyor; `SingleAgent` tool-call isteğini çalıştırmadan koruyor. Deney çıktısı tool argümanlarını event akışına eklemeden isteği ve çalıştırılmadığı bilgisini gösteriyor. Testler, lint, TypeScript kontrolü ve production build başarılı oldu.
+
+### 👉 v0.3.2 Bounded Tool Execution Loop
 
 **Amaç:** İzin verilen tool çağrısını sınırlı sayıda yürütmek, sonucu modele geri vermek ve bilinmeyen tool/hatalı çağrı davranışını belirlemek.
 
