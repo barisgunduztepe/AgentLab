@@ -5,11 +5,11 @@ Bu belge, AgentLab'in mevcut repository durumunu ve onaylanmış geliştirme sı
 ## Mevcut checkpoint
 
 - v0.1 Single Agent Foundation tamamlandı.
-- v0.2.1–v0.2.3 Tool System adımları tamamlandı.
+- v0.2 Tool System tamamlandı; v0.2.1–v0.2.5 exit checkpoint'i geçti.
 - v0.2.4 Tool Observability tamamlandı.
 - API route aktif akışta `FakeModelProvider` kullanıyor.
 - `OpenAIModelProvider` ve `GroqModelProvider` implementasyonları mevcut; aktif uygulama akışına bağlı değiller.
-- Sıradaki milestone: **v0.2.5 Tool System Exit Checkpoint**.
+- Sıradaki milestone: **v0.3.1 Structured Tool-Call Contract**.
 
 ## v0.1 — Single Agent Foundation
 
@@ -28,6 +28,8 @@ Bu belge, AgentLab'in mevcut repository durumunu ve onaylanmış geliştirme sı
 OpenAI ve Groq provider dosyaları mevcuttur. Aktif uygulama akışı ikisini de kullanmaz; API route `FakeModelProvider` ile çalışır.
 
 ## v0.2 — Tool System
+
+**Durum: ✅ Tamamlandı**
 
 - ✅ **v0.2.1 Tool Contract** — `Tool` interface'i.
 - ✅ **v0.2.2 CalculatorTool** — Sınırlı aritmetik hesaplayıcı ve testleri.
@@ -55,15 +57,24 @@ Event payload'ı varsayılan olarak tool input/output içeriklerini taşımaz. T
 - ✅ UI'da manuel doğrulama yapılır.
 - ✅ Testler, lint ve build başarılı olur.
 
-### ⬜ v0.2.5 Tool System Exit Checkpoint
+### ✅ v0.2.5 Tool System Exit Checkpoint
 
 **Amaç:** v0.2'yi çalışan ve test edilmiş bir checkpoint olarak kapatmak.
 
-**Doğrulama:** Test, lint, build, `git diff --check` ve kısa UI kontrolü.
+**Doğrulama sonuçları:**
+
+- ✅ Full test suite: 3 dosya / 15 test.
+- ✅ Lint.
+- ✅ Production build ve build içindeki TypeScript kontrolü.
+- ✅ `git diff --check` (exit code 0).
+- ✅ Calculator canlı UI smoke testi: `tool.started — calculator`, `tool.completed — calculator`, sonuç `96`.
+- ✅ Non-tool canlı UI smoke testi: `tool.*` eventi oluşmadı; model-provider yolu kullanıldı.
+
+**Sonuç:** v0.2 Tool System exit checkpoint kriterlerini geçti.
 
 ## v0.3 — Intelligent Tool Use
 
-### ⬜ v0.3.1 Structured Tool-Call Contract
+### 👉 v0.3.1 Structured Tool-Call Contract
 
 **Amaç:** Modelin metin yanıtına ek olarak yapılandırılmış tool isteği döndürebilmesini tanımlamak.
 

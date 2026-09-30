@@ -55,6 +55,8 @@ Bunlar sonraki sürümlerde değerlendirilecek.
 
 Proje küçük, test edilebilir ve geri alınabilir milestone'larla geliştirilecek. Her adımda önce kavram öğrenilecek; ardından küçük implementasyon, test, canlı doğrulama ve Git checkpoint'i gelecek.
 
-**Mevcut milestone:** v0.2.5 — Tool System Exit Checkpoint
+**Mevcut durum:** v0.2 Tool System tamamlandı.
+
+**Sıradaki milestone:** v0.3.1 — Structured Tool-Call Contract
 
 Sürümlerin ve milestone'ların ayrıntılı durumu için [ROADMAP.md](ROADMAP.md) dosyasına bakın.
