@@ -3,17 +3,36 @@ import type { Tool } from "../tools/tool";
 
 const MAX_CALCULATOR_NESTING_DEPTH = 32;
 
+export type ToolLifecycleSignal =
+  | { type: "tool.started"; toolName: string }
+  | { type: "tool.completed"; toolName: string }
+  | { type: "tool.failed"; toolName: string };
+
 export class SingleAgent {
   constructor(
     private readonly modelProvider: ModelProvider,
     private readonly tools: readonly Tool[] = [],
   ) {}
 
-  run(task: string): Promise<string> {
+  async run(
+    task: string,
+    onToolLifecycle?: (signal: ToolLifecycleSignal) => void,
+  ): Promise<string> {
     const calculatorTool = this.tools.find((tool) => tool.name === "calculator");
 
     if (calculatorTool && isSimpleArithmeticExpression(task)) {
-      return calculatorTool.execute(task);
+      onToolLifecycle?.({ type: "tool.started", toolName: calculatorTool.name });
+
+      let output: string;
+      try {
+        output = await calculatorTool.execute(task);
+      } catch (error) {
+        onToolLifecycle?.({ type: "tool.failed", toolName: calculatorTool.name });
+        throw error;
+      }
+
+      onToolLifecycle?.({ type: "tool.completed", toolName: calculatorTool.name });
+      return output;
     }
 
     return this.modelProvider.generateText(task);

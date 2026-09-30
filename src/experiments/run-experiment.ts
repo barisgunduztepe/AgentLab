@@ -25,7 +25,13 @@ export async function runExperiment(
   let output: string;
 
   try {
-    output = await agent.run(task);
+    output = await agent.run(task, (signal) => {
+      onEvent({
+        experimentId: id,
+        occurredAt: new Date().toISOString(),
+        ...signal,
+      });
+    });
   } catch {
     const endedAt = new Date().toISOString();
     const durationMs = Date.now() - startTimeMs;

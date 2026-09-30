@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ModelProvider } from "./model-provider";
-import { SingleAgent } from "./single-agent";
+import { SingleAgent, type ToolLifecycleSignal } from "./single-agent";
 import { CalculatorTool } from "../tools/calculator-tool";
 import type { Tool } from "../tools/tool";
 
@@ -13,6 +13,36 @@ describe("SingleAgent", () => {
 
     expect(result).toBe("96");
     expect(generateText).not.toHaveBeenCalled();
+  });
+
+  it("emits tool lifecycle signals around a successful calculator call", async () => {
+    const signals: ToolLifecycleSignal[] = [];
+    const agent = new SingleAgent({ generateText: async () => "unused" }, [new CalculatorTool()]);
+
+    await expect(
+      agent.run("12 * 8", (signal) => signals.push(signal)),
+    ).resolves.toBe("96");
+
+    expect(signals).toEqual([
+      { type: "tool.started", toolName: "calculator" },
+      { type: "tool.completed", toolName: "calculator" },
+    ]);
+  });
+
+  it("emits a failed tool lifecycle signal and rethrows tool errors", async () => {
+    const signals: ToolLifecycleSignal[] = [];
+    const rawToolError = "Division by zero is not allowed.";
+    const agent = new SingleAgent({ generateText: async () => "unused" }, [new CalculatorTool()]);
+
+    await expect(
+      agent.run("5 / 0", (signal) => signals.push(signal)),
+    ).rejects.toThrow(rawToolError);
+
+    expect(signals).toEqual([
+      { type: "tool.started", toolName: "calculator" },
+      { type: "tool.failed", toolName: "calculator" },
+    ]);
+    expect(JSON.stringify(signals)).not.toContain(rawToolError);
   });
 
   it("uses the provider for normal text tasks when a calculator is available", async () => {

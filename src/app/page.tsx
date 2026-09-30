@@ -257,7 +257,10 @@ export default function Home() {
           <ol aria-live="polite" style={{ margin: 0, paddingLeft: 22 }}>
             {events.map((experimentEvent, index) => (
               <li key={`${experimentEvent.experimentId}-${index}`} style={{ marginBottom: 8 }}>
-                <code>{experimentEvent.type}</code>
+                <code>
+                  {experimentEvent.type}
+                  {"toolName" in experimentEvent && ` — ${experimentEvent.toolName}`}
+                </code>
                 <span style={{ marginLeft: 10, color: "#6b7585" }}>
                   {new Date(experimentEvent.occurredAt).toLocaleTimeString()}
                 </span>

@@ -4,12 +4,12 @@ Bu belge, AgentLab'in mevcut repository durumunu ve onaylanmış geliştirme sı
 
 ## Mevcut checkpoint
 
-- `main` ve `origin/main` son incelenen durumda `1f5ad52 Add calculator tool support` commit'indeydi.
 - v0.1 Single Agent Foundation tamamlandı.
 - v0.2.1–v0.2.3 Tool System adımları tamamlandı.
+- v0.2.4 Tool Observability tamamlandı.
 - API route aktif akışta `FakeModelProvider` kullanıyor.
 - `OpenAIModelProvider` ve `GroqModelProvider` implementasyonları mevcut; aktif uygulama akışına bağlı değiller.
-- Sıradaki milestone: **v0.2.4 Tool Observability**.
+- Sıradaki milestone: **v0.2.5 Tool System Exit Checkpoint**.
 
 ## v0.1 — Single Agent Foundation
 
@@ -33,7 +33,7 @@ OpenAI ve Groq provider dosyaları mevcuttur. Aktif uygulama akışı ikisini de
 - ✅ **v0.2.2 CalculatorTool** — Sınırlı aritmetik hesaplayıcı ve testleri.
 - ✅ **v0.2.3 Tool Injection + Deterministic Routing** — Route calculator'ı oluşturup `Tool[]` olarak SingleAgent'a verir; aritmetik görevleri araçla, diğer görevleri provider ile işler.
 
-### 👉 v0.2.4 Tool Observability
+### ✅ v0.2.4 Tool Observability
 
 **Amaç:** Tool çalışmasını experiment event stream içinde görünür kılmak.
 
@@ -47,13 +47,13 @@ Event payload'ı varsayılan olarak tool input/output içeriklerini taşımaz. T
 
 **Done kriterleri:**
 
-- Matematik görevinde `tool.started` görünür.
-- Başarılı tool çalışmasında `tool.completed` görünür.
-- Tool hatasında `tool.failed` görünür.
-- Normal metin görevinde tool event'i oluşmaz.
-- Event sırası test edilir.
-- UI'da manuel doğrulama yapılır.
-- Testler, lint ve build başarılı olur.
+- ✅ Matematik görevinde `tool.started` görünür.
+- ✅ Başarılı tool çalışmasında `tool.completed` görünür.
+- ✅ Tool hatasında `tool.failed` görünür.
+- ✅ Normal metin görevinde tool event'i oluşmaz.
+- ✅ Event sırası test edilir.
+- ✅ UI'da manuel doğrulama yapılır.
+- ✅ Testler, lint ve build başarılı olur.
 
 ### ⬜ v0.2.5 Tool System Exit Checkpoint
 

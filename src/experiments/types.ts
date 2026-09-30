@@ -3,6 +3,9 @@ export type ExperimentStatus = "running" | "completed" | "failed";
 export type ExperimentEventType =
   | "experiment.started"
   | "agent.started"
+  | "tool.started"
+  | "tool.completed"
+  | "tool.failed"
   | "agent.completed"
   | "experiment.completed"
   | "experiment.failed";
@@ -26,6 +29,9 @@ interface ExperimentEventBase {
 export type ExperimentEvent =
   | (ExperimentEventBase & { type: "experiment.started" })
   | (ExperimentEventBase & { type: "agent.started" })
+  | (ExperimentEventBase & { type: "tool.started"; toolName: string })
+  | (ExperimentEventBase & { type: "tool.completed"; toolName: string })
+  | (ExperimentEventBase & { type: "tool.failed"; toolName: string })
   | (ExperimentEventBase & { type: "agent.completed"; output: string })
   | (ExperimentEventBase & {
       type: "experiment.completed";
