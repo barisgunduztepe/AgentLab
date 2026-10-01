@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { ExperimentEvent, ExperimentOutput, ExperimentStatus } from "@/experiments/types";
+import type { EvaluationResult, ExperimentEvent, ExperimentOutput, ExperimentStatus } from "@/experiments/types";
 import { SCENARIOS } from "@/experiments/scenarios";
 
 type UiStatus = ExperimentStatus | "idle";
@@ -29,6 +29,7 @@ export default function Home() {
   const [durationMs, setDurationMs] = useState<number | null>(null);
   const [output, setOutput] = useState<ExperimentOutput | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,6 +45,7 @@ export default function Home() {
     setDurationMs(null);
     setOutput(null);
     setErrorMessage(null);
+    setEvaluation(null);
     setStatus("running");
 
     try {
@@ -113,6 +115,9 @@ export default function Home() {
             setErrorMessage(experimentEvent.errorMessage);
             setStatus("failed");
             receivedFinalEvent = true;
+            break;
+          case "scenario.evaluated":
+            setEvaluation(experimentEvent.evaluation);
             break;
         }
       }
@@ -188,7 +193,10 @@ export default function Home() {
         <select
           id="experiment-mode"
           value={selectedScenarioId}
-          onChange={(event) => setSelectedScenarioId(event.target.value)}
+          onChange={(event) => {
+            setSelectedScenarioId(event.target.value);
+            setEvaluation(null);
+          }}
           disabled={isRunning}
           style={{
             display: "block",
@@ -305,6 +313,25 @@ export default function Home() {
           </ol>
         )}
       </section>
+
+      {evaluation && (
+        <section
+          aria-live="polite"
+          style={{
+            marginTop: 20,
+            padding: 20,
+            border: `1px solid ${evaluation.passed ? "#8cc9a1" : "#e5a4a4"}`,
+            borderRadius: 8,
+            background: evaluation.passed ? "#f1fbf4" : "#fff5f5",
+          }}
+        >
+          <h2 style={{ margin: "0 0 8px", fontSize: 20 }}>Scenario evaluation</h2>
+          <p role="status" style={{ margin: "0 0 6px", fontWeight: 700 }}>
+            {evaluation.passed ? "PASS" : "FAIL"}
+          </p>
+          <p style={{ margin: 0 }}>{evaluation.reason}</p>
+        </section>
+      )}
 
       {errorMessage && (
         <section

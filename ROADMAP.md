@@ -15,7 +15,8 @@ Bu belge, AgentLab'in mevcut repository durumunu ve onaylanmış geliştirme sı
 - v0.3.4 Gemini provider implementasyonu tamamlandı; SDK davranışı mock testlerle doğrulandı. Manuel REST kontrolünde toolsuz Interactions isteği başarılı oldu; aynı calculator tool şemalı istek farklı denemelerde hem başarılı oldu hem de geçici yüksek talep kaynaklı `503 service_unavailable` aldı. AgentLab'in canlı SDK tool-calling davranışı doğrulanmadı; yeni smoke testleri ertelendi.
 - v0.3.5 Provider Resilience implementasyonu tamamlandı; provider-neutral retry decorator'ı OpenAI ve Gemini'yi sarıyor, FakeModelProvider'ı sarmıyor. Otomatik doğrulama mock tabanlıdır; canlı Gemini smoke testi yapılmadı.
 - v0.4.1 Fixed Experiment Scenarios uygulaması ve otomatik doğrulamaları tamamlandı; Gemini canlı smoke testleri hâlâ ertelenmiştir.
-- Sonraki planlı milestone: **v0.4.2 Basit pass/fail evaluation**.
+- v0.4.2 Simple Pass/Fail Evaluation uygulaması ve otomatik doğrulamaları tamamlandı; evaluation sabit senaryolarla sınırlıdır.
+- Sonraki planlı milestone: **v0.5.1 İki agent arasında kontrollü handoff**.
 
 ## v0.1 — Single Agent Foundation
 
@@ -128,13 +129,19 @@ Calculator function schema'sı bilinçli olarak OpenAI provider içinde tanıml�
 
 Fake yanıt dizileri senaryo metadata'sından ayrı server-side fixture dosyasında tutulur ve yalnızca açıkça `AGENTLAB_MODEL_PROVIDER=fake` seçildiğinde verilir. Gerçek provider'lar sabit görev metnini normal biçimde alır, ancak model çıktıları deterministik değildir. Mevcut üç tool yürütme limiti korunur; dördüncü çağrı testi kullanıcı kataloğunda yer almaz.
 
-**Doğrulama:** Fake provider ile senaryo akışları, free-text regresyonu, bilinmeyen/birleşik payload reddi ve provider factory davranışı otomatik testlerle doğrulanır; testler gerçek ağa çıkmaz. UI senaryo seçimi ile serbest görev girişini açıkça ayırır. v0.4.2 değerlendirmesi uygulanmamıştır.
+**Doğrulama:** Fake provider ile senaryo akışları, free-text regresyonu, bilinmeyen/birleşik payload reddi ve provider factory davranışı otomatik testlerle doğrulanır; testler gerçek ağa çıkmaz. UI senaryo seçimi ile serbest görev girişini açıkça ayırır. Pass/fail değerlendirmesi v0.4.2'de eklenmiştir.
 
-### ⬜ v0.4.2 Basit pass/fail evaluation
+### ✅ v0.4.2 Simple Pass/Fail Evaluation
 
-**Amaç:** Açık ve hafif assertion'larla sonuçları değerlendirmek.
+**Amaç:** Sabit senaryoların experiment result ve mevcut lifecycle event'lerine dayalı açık, hafif assertion'larla sonucunu PASS/FAIL değerlendirmek.
 
-Ağır benchmark framework veya LLM-as-judge eklenmez.
+**Uygulama:** `EvaluationResult` yalnızca `passed` ve kullanıcıya gösterilebilen kısa `reason` içerir. Küçük server-side evaluator senaryo ID'sine göre çalışır; evaluation API route'ta `SingleAgent`, `runExperiment` ve `ModelProvider` dışında yapılır. Sabit senaryolar için execution event'lerinden sonra tek `scenario.evaluated` SSE event'i gönderilir. Custom/free-text experiment'lar değerlendirilmez ve evaluation event'i almaz. Execution status (completed/failed) ile evaluation PASS/FAIL ayrı gösterilir.
+
+Doğrudan metin senaryosu tamamlanmış, boş olmayan metin ve sıfır tool lifecycle event'i ister. Tek calculator senaryosu bir başarılı calculator lifecycle'ı ve final text içinde ayrı numeric token olarak `96` ister. Üç adımlı senaryo üç başarılı calculator lifecycle'ı ve `5`, `15`, `24` numeric token'larını ister. Güvenli başarısızlık senaryosu experiment failure ve sıfır tool lifecycle event'i olduğunda PASS olabilir.
+
+**Sınırlamalar:** Safe-failure evaluator yalnızca gözlenen sonucu bilir; unknown-tool nedenini kanıtlayamaz. Gerçek provider yanıtlarının dili ve davranışı değişebilir; deterministik sayısal/tool-count assertion'ları insanın kabul edeceği bazı yanıtları FAIL sayabilir. Bu milestone LLM-as-judge, semantic grading, fuzzy matching, numeric scoring, persistence, repeated runs veya provider comparison eklemez.
+
+**Doğrulama:** Saf evaluator ve SSE akışı Fake fixture'larla test edilir; otomatik testler ağa çıkmaz. UI evaluation sonucunu experiment execution status'undan ayrı gösterir.
 
 ## v0.5 — Multi-Agent Foundation
 

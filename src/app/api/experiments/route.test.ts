@@ -94,6 +94,7 @@ describe("POST /api/experiments fixed scenarios", () => {
       type: "agent.completed",
       output: { type: "text", text: "[Fake Model] Task received: Say hello." },
     }));
+    expect(events.some((event) => event.type === "scenario.evaluated")).toBe(false);
   });
 
   it("runs the selected direct-text scenario with its Fake fixture", async () => {
@@ -107,6 +108,7 @@ describe("POST /api/experiments fixed scenarios", () => {
       "agent.started",
       "agent.completed",
       "experiment.completed",
+      "scenario.evaluated",
     ]);
     expect(events[2]).toMatchObject({
       type: "agent.completed",
@@ -115,6 +117,12 @@ describe("POST /api/experiments fixed scenarios", () => {
         text: "Istanbul connects historic trade routes, empires, and cultures. Its monuments reflect Roman, Byzantine, and Ottoman periods. Its location between Europe and Asia shaped its long-standing importance.",
       },
     });
+    expect(events[4]).toMatchObject({
+      type: "scenario.evaluated",
+      scenarioId: "direct-text",
+      evaluation: { passed: true },
+    });
+    expect(events.filter((event) => event.type === "scenario.evaluated")).toHaveLength(1);
   });
 
   it("runs the single-calculator scenario with one tool lifecycle", async () => {
@@ -130,11 +138,17 @@ describe("POST /api/experiments fixed scenarios", () => {
       "tool.completed",
       "agent.completed",
       "experiment.completed",
+      "scenario.evaluated",
     ]);
     expect(events[2]).toMatchObject({ type: "tool.started", toolName: "calculator" });
     expect(events[4]).toMatchObject({ type: "agent.completed", output: { text: "12 times 8 is 96." } });
     expect(JSON.stringify(events)).not.toContain("scenario-calculator-1");
     expect(JSON.stringify(events)).not.toContain("12 * 8");
+    expect(events.at(-1)).toMatchObject({
+      type: "scenario.evaluated",
+      evaluation: { passed: true },
+    });
+    expect(events.filter((event) => event.type === "scenario.evaluated")).toHaveLength(1);
   });
 
   it("runs the three-tool scenario within the existing execution budget", async () => {
@@ -145,7 +159,13 @@ describe("POST /api/experiments fixed scenarios", () => {
 
     expect(events.filter((event) => event.type === "tool.started")).toHaveLength(3);
     expect(events.filter((event) => event.type === "tool.completed")).toHaveLength(3);
-    expect(events.at(-1)).toMatchObject({ type: "experiment.completed" });
+    expect(events.at(-2)).toMatchObject({ type: "experiment.completed" });
+    expect(events.at(-1)).toMatchObject({
+      type: "scenario.evaluated",
+      scenarioId: "calculator-three-steps",
+      evaluation: { passed: true },
+    });
+    expect(events.filter((event) => event.type === "scenario.evaluated")).toHaveLength(1);
     expect(events.some((event) => event.type === "agent.completed" &&
       (event.output as { text?: string }).text === "The three results are 5, 15, and 24.")).toBe(true);
     expect(JSON.stringify(events)).not.toContain("scenario-step-");
@@ -161,13 +181,42 @@ describe("POST /api/experiments fixed scenarios", () => {
       "experiment.started",
       "agent.started",
       "experiment.failed",
+      "scenario.evaluated",
     ]);
-    expect(events.at(-1)).toMatchObject({
+    expect(events.at(-2)).toMatchObject({
       type: "experiment.failed",
       errorMessage: "Agent görevi tamamlayamadı.",
     });
     expect(JSON.stringify(events)).not.toContain("weather_lookup");
     expect(JSON.stringify(events)).not.toContain("scenario-unknown-tool");
+    expect(events.at(-1)).toMatchObject({
+      type: "scenario.evaluated",
+      scenarioId: "unknown-tool-failure",
+      evaluation: {
+        passed: true,
+        reason: "Experiment failed safely before any tool execution.",
+      },
+    });
+    expect(events.filter((event) => event.type === "scenario.evaluated")).toHaveLength(1);
+  });
+
+  it("keeps evaluation event data limited to the public envelope, scenario ID, and result", async () => {
+    process.env.AGENTLAB_MODEL_PROVIDER = "fake";
+
+    const response = await post({ scenarioId: "calculator-once" });
+    const events = await readEvents(response);
+    const evaluationEvent = events.find((event) => event.type === "scenario.evaluated")!;
+
+    expect(Object.keys(evaluationEvent).sort()).toEqual([
+      "evaluation",
+      "experimentId",
+      "occurredAt",
+      "scenarioId",
+      "type",
+    ]);
+    expect(JSON.stringify(evaluationEvent)).not.toContain("12 * 8");
+    expect(JSON.stringify(evaluationEvent)).not.toContain("scenario-calculator-1");
+    expect(JSON.stringify(evaluationEvent)).not.toContain("OPENAI_API_KEY");
   });
 
   it("rejects unknown scenario IDs without falling back", async () => {

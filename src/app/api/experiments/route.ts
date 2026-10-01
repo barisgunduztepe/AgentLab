@@ -2,8 +2,10 @@ import { createModelProvider } from "../../../agent/create-model-provider";
 import type { ModelProvider } from "../../../agent/model-provider";
 import { SingleAgent } from "../../../agent/single-agent";
 import { runExperiment } from "../../../experiments/run-experiment";
+import { evaluateScenario } from "../../../experiments/scenario-evaluator";
 import { getScenarioFakeResponses } from "../../../experiments/scenario-fake-fixtures";
 import { getScenarioById } from "../../../experiments/scenarios";
+import type { ExperimentEvent } from "../../../experiments/types";
 import { CalculatorTool } from "../../../tools/calculator-tool";
 
 export async function POST(request: Request): Promise<Response> {
@@ -69,6 +71,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const encoder = new TextEncoder();
   let streamCancelled = false;
+  const capturedEvents: ExperimentEvent[] = [];
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -76,14 +79,23 @@ export async function POST(request: Request): Promise<Response> {
         const calculatorTool = new CalculatorTool();
         const agent = new SingleAgent(modelProvider, [calculatorTool]);
 
-        await runExperiment(task, agent, (event) => {
-          if (streamCancelled) {
-            return;
-          }
-
-          const data = `data: ${JSON.stringify(event)}\n\n`;
-          controller.enqueue(encoder.encode(data));
+        const experiment = await runExperiment(task, agent, (event) => {
+          capturedEvents.push(event);
+          enqueueEvent(controller, encoder, event, streamCancelled);
         });
+
+        if (scenarioId) {
+          const evaluation = evaluateScenario(scenarioId, experiment, capturedEvents);
+          if (evaluation) {
+            enqueueEvent(controller, encoder, {
+              experimentId: experiment.id,
+              occurredAt: new Date().toISOString(),
+              type: "scenario.evaluated",
+              scenarioId,
+              evaluation,
+            }, streamCancelled);
+          }
+        }
       } finally {
         if (!streamCancelled) {
           controller.close();
@@ -101,4 +113,18 @@ export async function POST(request: Request): Promise<Response> {
       "Content-Type": "text/event-stream; charset=utf-8",
     },
   });
+}
+
+function enqueueEvent(
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  encoder: TextEncoder,
+  event: ExperimentEvent,
+  streamCancelled: boolean,
+): void {
+  if (streamCancelled) {
+    return;
+  }
+
+  const data = `data: ${JSON.stringify(event)}\n\n`;
+  controller.enqueue(encoder.encode(data));
 }

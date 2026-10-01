@@ -3,6 +3,11 @@ import type { ModelResponse } from "../agent/model-provider";
 export type ExperimentStatus = "running" | "completed" | "failed";
 export type ExperimentOutput = Extract<ModelResponse, { type: "text" }>;
 
+export interface EvaluationResult {
+  passed: boolean;
+  reason: string;
+}
+
 export type ExperimentEventType =
   | "experiment.started"
   | "agent.started"
@@ -11,7 +16,8 @@ export type ExperimentEventType =
   | "tool.failed"
   | "agent.completed"
   | "experiment.completed"
-  | "experiment.failed";
+  | "experiment.failed"
+  | "scenario.evaluated";
 
 export interface Experiment {
   id: string;
@@ -46,4 +52,9 @@ export type ExperimentEvent =
       endedAt: string;
       durationMs: number;
       errorMessage: string;
+    })
+  | (ExperimentEventBase & {
+      type: "scenario.evaluated";
+      scenarioId: string;
+      evaluation: EvaluationResult;
     });

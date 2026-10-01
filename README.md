@@ -55,7 +55,7 @@ Bunlar sonraki sürümlerde değerlendirilecek.
 
 Proje küçük, test edilebilir ve geri alınabilir milestone'larla geliştirilecek. Her adımda önce kavram öğrenilecek; ardından küçük implementasyon, test, canlı doğrulama ve Git checkpoint'i gelecek.
 
-**Mevcut durum:** v0.4.1 Fixed Experiment Scenarios uygulaması ve otomatik doğrulamaları tamamlandı. v0.3.5 Provider Resilience da tamamlandı. Gemini toolsuz REST isteği başarılı oldu. Calculator tool şemalı REST isteği farklı denemelerde hem geçici `503 service_unavailable` aldı hem de başarılı oldu; sağlayıcı kapasitesi değişken. AgentLab üzerinden canlı tool-calling davranışı hâlâ doğrulanmamıştır ve yeni smoke testleri ertelenmiştir. v0.3.3 OpenAI canlı davranışı da gerçek API smoke testi yapılmadığı için doğrulanmamıştır.
+**Mevcut durum:** v0.4.2 Simple Pass/Fail Evaluation uygulaması ve otomatik doğrulamaları tamamlandı. v0.4.1 Fixed Experiment Scenarios ve v0.3.5 Provider Resilience da tamamlandı. Gemini toolsuz REST isteği başarılı oldu. Calculator tool şemalı REST isteği farklı denemelerde hem geçici `503 service_unavailable` aldı hem de başarılı oldu; sağlayıcı kapasitesi değişken. AgentLab üzerinden canlı tool-calling davranışı hâlâ doğrulanmamıştır ve yeni smoke testleri ertelenmiştir. v0.3.3 OpenAI canlı davranışı da gerçek API smoke testi yapılmadığı için doğrulanmamıştır.
 
 ## v0.3.3 — OpenAI Responses API
 
@@ -85,6 +85,12 @@ SDK'lerin kendi retry'ları kapalıdır: OpenAI client `maxRetries: 0`, Gemini I
 
 UI sabit TypeScript senaryo kataloğundan bilinen görevleri çalıştırabilir; serbest metin girişi de kullanılmaya devam eder. Senaryo `id`, `title`, `description` ve sabit `task` içerir. API `{ scenarioId }` değerini katalogda doğrulayıp görevi mevcut experiment akışına verir. `{ task, scenarioId }` birlikte gönderilirse istek `400` ile reddedilir; bilinmeyen senaryo için varsayılan senaryo veya serbest metin fallback'i yoktur.
 
-İlk katalog doğrudan metin yanıtı, tek calculator çağrısı, üç calculator çağrısı ve güvenli unknown-tool hatasını kapsar. Fake `ModelResponse[]` fixture'ları UI kataloğundan ayrı server-side dosyada tutulur ve yalnızca `AGENTLAB_MODEL_PROVIDER=fake` açıkça seçildiğinde kullanılır. OpenAI/Gemini aynı sabit görev metnini alır; model yanıtları deterministik değildir. `SingleAgent`, `runExperiment`, `ModelProvider` ve experiment/event tipleri değişmez; üç tool execution limiti korunur. Pass/fail değerlendirmesi, beklenen yanıt karşılaştırması ve scoring v0.4.2'ye bırakılmıştır.
+İlk katalog doğrudan metin yanıtı, tek calculator çağrısı, üç calculator çağrısı ve güvenli unknown-tool hatasını kapsar. Fake `ModelResponse[]` fixture'ları UI kataloğundan ayrı server-side dosyada tutulur ve yalnızca `AGENTLAB_MODEL_PROVIDER=fake` açıkça seçildiğinde kullanılır. OpenAI/Gemini aynı sabit görev metnini alır; model yanıtları deterministik değildir. `SingleAgent`, `runExperiment` ve `ModelProvider` değişmez; üç tool execution limiti korunur. v0.4.2, senaryolar için ayrı `scenario.evaluated` event'i ekler.
+
+## v0.4.2 — Simple Pass/Fail Evaluation
+
+Sabit senaryolar, experiment sonucu ve yakalanan tool lifecycle event'leri üzerinden deterministik, açık kontrollerle PASS/FAIL alır. Evaluation; `SingleAgent`, `runExperiment` ve `ModelProvider` dışında, API route sınırında yapılır. Execution status ile evaluation sonucu ayrıdır: beklenen güvenli başarısızlık `experiment.failed` ardından PASS değerlendirmesi üretebilir. UI bu iki sonucu ayrı gösterir.
+
+Custom/free-text görevler değerlendirilmez. Bilinmeyen-tool senaryosu yalnızca gözlenen sonucu değerlendirir: experiment başarısız olmuş ve hiçbir tool lifecycle event'i oluşmamış olmalıdır. Bu, hatanın özellikle unknown tool kaynaklı olduğunu kanıtlamaz. Gerçek provider çıktıları deterministik değildir; sabit sayı ve tool-count assertion'ları, insanın kabul edebileceği bir yanıtı da FAIL sayabilir. LLM-as-judge, anlamsal değerlendirme, fuzzy matching ve skor bu milestone'un kapsamı dışındadır.
 
 Sürümlerin ve milestone'ların ayrıntılı durumu için [ROADMAP.md](ROADMAP.md) dosyasına bakın.
