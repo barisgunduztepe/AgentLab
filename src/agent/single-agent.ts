@@ -3,6 +3,8 @@ import type { Tool } from "../tools/tool";
 
 const MAX_CALCULATOR_NESTING_DEPTH = 32;
 const MAX_TOOL_EXECUTIONS = 3;
+export const STRUCTURED_AGENT_INSTRUCTION = 'Organize your response into the labeled sections “Key points” and “Conclusion.” Keep it concise and complete the original task.';
+export type AgentConfigurationId = "baseline" | "structured";
 
 export type ToolLifecycleSignal =
   | { type: "tool.started"; toolName: string }
@@ -13,6 +15,7 @@ export class SingleAgent {
   constructor(
     private readonly modelProvider: ModelProvider,
     private readonly tools: readonly Tool[] = [],
+    private readonly configurationId: AgentConfigurationId = "baseline",
   ) {}
 
   async run(
@@ -36,7 +39,10 @@ export class SingleAgent {
       return { type: "text", text: output };
     }
 
-    let response = await this.modelProvider.generateResponse(task, this.tools);
+    const prompt = this.configurationId === "structured"
+      ? `${task}\n\n${STRUCTURED_AGENT_INSTRUCTION}`
+      : task;
+    let response = await this.modelProvider.generateResponse(prompt, this.tools);
     let executionCount = 0;
 
     while (response.type === "tool_call") {

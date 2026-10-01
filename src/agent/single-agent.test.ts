@@ -3,7 +3,7 @@ import type { ModelProvider, ModelResponse } from "./model-provider";
 import { FakeModelProvider } from "./providers/fake-model-provider";
 import { RetryingModelProvider } from "./providers/retrying-model-provider";
 import { RetryableProviderError } from "./retryable-provider-error";
-import { SingleAgent, type ToolLifecycleSignal } from "./single-agent";
+import { SingleAgent, STRUCTURED_AGENT_INSTRUCTION, type ToolLifecycleSignal } from "./single-agent";
 import { CalculatorTool } from "../tools/calculator-tool";
 import type { Tool } from "../tools/tool";
 
@@ -80,6 +80,22 @@ describe("SingleAgent", () => {
 
     await expect(new SingleAgent(modelProvider).run(task)).resolves.toEqual({ type: "text", text: providerText });
     expect(receivedPrompt).toBe(task);
+  });
+
+  it("keeps baseline prompt unchanged and adds only the locked structured instruction", async () => {
+    const task = "Write a concise explanation.";
+    const baselineGenerate = vi.fn(async () => ({ type: "text" as const, text: "baseline" }));
+    const structuredGenerate = vi.fn(async () => ({ type: "text" as const, text: "structured" }));
+    const provider = (generateResponse: typeof baselineGenerate): ModelProvider => ({
+      generateResponse,
+      continueAfterToolCall: unusedContinuation,
+    });
+
+    await new SingleAgent(provider(baselineGenerate)).run(task);
+    await new SingleAgent(provider(structuredGenerate), [], "structured").run(task);
+
+    expect(baselineGenerate).toHaveBeenCalledExactlyOnceWith(task, []);
+    expect(structuredGenerate).toHaveBeenCalledExactlyOnceWith(`${task}\n\n${STRUCTURED_AGENT_INSTRUCTION}`, []);
   });
 
   it("executes a structured tool call and continues the model with its result", async () => {

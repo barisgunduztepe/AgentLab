@@ -10,9 +10,9 @@ export class OpenAIModelProvider implements ModelProvider {
   private pendingCallId: string | undefined;
   private tools: readonly ModelTool[] = [];
 
-  constructor() {
-    const apiKey = process.env.OPENAI_API_KEY;
-    const model = process.env.OPENAI_MODEL;
+  constructor(configuration?: { apiKey: string; model: string }) {
+    const apiKey = configuration?.apiKey ?? process.env.OPENAI_API_KEY;
+    const model = configuration?.model ?? process.env.OPENAI_MODEL;
 
     if (!apiKey?.trim()) {
       throw new Error("OPENAI_API_KEY is not configured.");

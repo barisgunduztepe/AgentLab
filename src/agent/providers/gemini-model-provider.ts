@@ -10,9 +10,9 @@ export class GeminiModelProvider implements ModelProvider {
   private pendingFunctionName: string | undefined;
   private tools: readonly ModelTool[] = [];
 
-  constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    const model = process.env.GEMINI_MODEL;
+  constructor(configuration?: { apiKey: string; model: string }) {
+    const apiKey = configuration?.apiKey ?? process.env.GEMINI_API_KEY;
+    const model = configuration?.model ?? process.env.GEMINI_MODEL;
 
     if (!apiKey?.trim()) {
       throw new Error("GEMINI_API_KEY is not configured.");

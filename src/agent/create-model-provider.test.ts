@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createModelProvider } from "./create-model-provider";
+import { createComparisonModelProviders, createModelProvider } from "./create-model-provider";
 import { FakeModelProvider } from "./providers/fake-model-provider";
 import { RetryingModelProvider } from "./providers/retrying-model-provider";
 
@@ -22,6 +22,38 @@ describe("createModelProvider", () => {
     process.env.AGENTLAB_MODEL_PROVIDER = "fake";
 
     expect(createModelProvider()).toBeInstanceOf(FakeModelProvider);
+  });
+
+  it("creates two separate deterministic Fake providers from one explicit configuration", async () => {
+    process.env.AGENTLAB_MODEL_PROVIDER = "fake";
+    const responses = [{ type: "text" as const, text: "fixture response" }];
+    const [baseline, structured] = createComparisonModelProviders({ baseline: responses, structured: [...responses] });
+
+    expect(baseline).toBeInstanceOf(FakeModelProvider);
+    expect(structured).toBeInstanceOf(FakeModelProvider);
+    expect(baseline).not.toBe(structured);
+    await expect(baseline.generateResponse("same task")).resolves.toEqual(responses[0]);
+    await expect(structured.generateResponse("same task")).resolves.toEqual(responses[0]);
+  });
+
+  it.each(["openai", "gemini"] as const)("resolves %s model configuration once and creates isolated retry-wrapped providers", (provider) => {
+    process.env.AGENTLAB_MODEL_PROVIDER = provider;
+    if (provider === "openai") {
+      process.env.OPENAI_API_KEY = "private-test-key";
+      process.env.OPENAI_MODEL = "test-openai-model";
+    } else {
+      process.env.GEMINI_API_KEY = "private-test-key";
+      process.env.GEMINI_MODEL = "test-gemini-model";
+    }
+
+    const [first, second] = createComparisonModelProviders();
+    expect(first).toBeInstanceOf(RetryingModelProvider);
+    expect(second).toBeInstanceOf(RetryingModelProvider);
+    expect(first).not.toBe(second);
+    const firstSdkProvider = (first as unknown as { provider: { model: string; client: object } }).provider;
+    const secondSdkProvider = (second as unknown as { provider: { model: string; client: object } }).provider;
+    expect(firstSdkProvider.model).toBe(secondSdkProvider.model);
+    expect(firstSdkProvider.client).not.toBe(secondSdkProvider.client);
   });
 
   it("uses an optional response fixture only when FakeModelProvider is explicitly selected", async () => {

@@ -5,14 +5,14 @@ import { TwoAgentHandoffRunner } from "../../../agent/two-agent-handoff-runner";
 import { getHandoffFakeFixtures } from "../../../experiments/handoff-fake-fixtures";
 import {
   experimentHistoryStore,
-  type ExperimentHistoryRecord,
   type ExperimentHistoryStore,
 } from "../../../experiments/experiment-history";
+import { toExperimentHistoryRecord } from "../../../experiments/history-record";
 import { runExperiment } from "../../../experiments/run-experiment";
 import { evaluateScenario } from "../../../experiments/scenario-evaluator";
 import { getScenarioFakeResponses } from "../../../experiments/scenario-fake-fixtures";
 import { getScenarioById } from "../../../experiments/scenarios";
-import type { EvaluationResult, Experiment, ExperimentEvent } from "../../../experiments/types";
+import type { EvaluationResult, ExperimentEvent } from "../../../experiments/types";
 import { CalculatorTool } from "../../../tools/calculator-tool";
 
 export function createExperimentPostHandler(historyStore: Pick<ExperimentHistoryStore, "append">) {
@@ -114,7 +114,7 @@ export function createExperimentPostHandler(historyStore: Pick<ExperimentHistory
           }
 
           try {
-            await historyStore.append(toHistoryRecord(experiment, scenarioId, evaluation, capturedEvents));
+            await historyStore.append(toExperimentHistoryRecord(experiment, scenarioId, evaluation, capturedEvents));
           } catch {
             // Execution succeeded or failed independently; keep storage details and user data private.
             console.error("AgentLab experiment history could not be saved.");
@@ -140,32 +140,6 @@ export function createExperimentPostHandler(historyStore: Pick<ExperimentHistory
 }
 
 export const handleExperimentPost = createExperimentPostHandler(experimentHistoryStore);
-
-function toHistoryRecord(
-  experiment: Experiment,
-  scenarioId: string | undefined,
-  evaluation: EvaluationResult | undefined,
-  events: ExperimentEvent[],
-): ExperimentHistoryRecord {
-  if (experiment.status === "running" || !experiment.endedAt || experiment.durationMs === undefined) {
-    throw new Error("A terminal experiment must include end timing.");
-  }
-
-  return {
-    schemaVersion: 1,
-    id: experiment.id,
-    task: experiment.task,
-    status: experiment.status,
-    startedAt: experiment.startedAt,
-    endedAt: experiment.endedAt,
-    durationMs: experiment.durationMs,
-    ...(scenarioId === undefined ? {} : { scenarioId }),
-    ...(experiment.status === "completed" && experiment.output ? { output: experiment.output } : {}),
-    ...(experiment.status === "failed" && experiment.errorMessage ? { errorMessage: experiment.errorMessage } : {}),
-    ...(evaluation === undefined ? {} : { evaluation }),
-    events: [...events],
-  };
-}
 
 function enqueueEvent(
   controller: ReadableStreamDefaultController<Uint8Array>,

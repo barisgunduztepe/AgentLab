@@ -140,7 +140,7 @@ describe("ExperimentHistoryStore", () => {
   });
 
   it.each([
-    ["unsupported version", JSON.stringify({ schemaVersion: 2, records: [] }), "unsupported_schema"],
+    ["unsupported version", JSON.stringify({ schemaVersion: 3, records: [] }), "unsupported_schema"],
     ["unknown snapshot structure", JSON.stringify({ experiments: [] }), "unsupported_schema"],
     ["invalid record", JSON.stringify({ schemaVersion: 1, records: [{ id: "incomplete" }] }), "invalid_snapshot"],
   ] as const)("rejects %s and does not overwrite it", async (_label, contents, code) => {
@@ -155,6 +155,37 @@ describe("ExperimentHistoryStore", () => {
     const record = historyRecord("evaluated-run", "completed", "2026-10-01T00:00:01.000Z");
 
     expect(() => store.append({ ...record, evaluation: { passed: true, reason: "Expected result." } }))
+      .toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
+  });
+
+  it("stores comparison metadata in v2 and keeps existing v1 records readable without rewriting them", async () => {
+    const first = historyRecord("legacy", "completed", "2026-10-01T00:00:01.000Z");
+    await store.append(first);
+    const comparisonRecord = {
+      ...historyRecord("baseline-run", "completed", "2026-10-01T00:00:02.000Z"),
+      schemaVersion: 2 as const,
+      scenarioId: "direct-text",
+      comparisonId: "comparison-1",
+      configurationId: "baseline" as const,
+    };
+    await store.append(comparisonRecord);
+
+    const snapshot = JSON.parse(await readFile(store.filePath, "utf8"));
+    expect(snapshot.schemaVersion).toBe(2);
+    expect(snapshot.records).toContainEqual(first);
+    expect(snapshot.records).toContainEqual(comparisonRecord);
+    await expect(store.getById("legacy")).resolves.toMatchObject({ schemaVersion: 1 });
+  });
+
+  it("rejects incomplete or unsupported comparison metadata", () => {
+    const base = {
+      ...historyRecord("comparison-run", "completed", "2026-10-01T00:00:01.000Z"),
+      schemaVersion: 2 as const,
+      scenarioId: "direct-text",
+    };
+    expect(() => store.append({ ...base, comparisonId: "comparison-1" }))
+      .toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
+    expect(() => store.append({ ...base, comparisonId: "comparison-1", configurationId: "other" as "baseline" }))
       .toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
   });
 

@@ -25,3 +25,12 @@ const SCENARIO_FAKE_FIXTURES = {
 export function getScenarioFakeResponses(scenarioId: string): readonly ModelResponse[] | undefined {
   return SCENARIO_FAKE_FIXTURES[scenarioId as keyof typeof SCENARIO_FAKE_FIXTURES];
 }
+
+export function getComparisonFakeResponses(scenarioId: string): {
+  baseline: readonly ModelResponse[];
+  structured: readonly ModelResponse[];
+} | undefined {
+  const responses = getScenarioFakeResponses(scenarioId);
+  if (!responses) return undefined;
+  return { baseline: [...responses], structured: [...responses] };
+}

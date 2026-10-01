@@ -6,6 +6,11 @@ import type { ExperimentHistoryRecord, ExperimentHistorySummary } from "@/experi
 import { SCENARIOS } from "@/experiments/scenarios";
 
 type UiStatus = ExperimentStatus | "idle";
+type ComparisonResult = {
+  comparisonId: string;
+  scenarioId: string;
+  runs: { configurationId: "baseline" | "structured"; id: string; historySaved: boolean }[];
+};
 
 function statusLabel(status: UiStatus): string {
   switch (status) {
@@ -86,6 +91,9 @@ export default function Home() {
   const [historicalExperiment, setHistoricalExperiment] = useState<ExperimentHistoryRecord | null>(null);
   const [historicalLoading, setHistoricalLoading] = useState(false);
   const [historicalError, setHistoricalError] = useState<string | null>(null);
+  const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonError, setComparisonError] = useState<string | null>(null);
 
   const refreshHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -272,6 +280,27 @@ export default function Home() {
     }
   }
 
+  async function handleComparison() {
+    if (!selectedScenarioId || !comparableScenarioIds.has(selectedScenarioId) || isRunning || comparisonLoading) return;
+    setComparisonLoading(true);
+    setComparisonError(null);
+    setComparisonResult(null);
+    try {
+      const response = await fetch("/api/experiments/compare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenarioId: selectedScenarioId }),
+      });
+      if (!response.ok) throw new Error();
+      setComparisonResult(await response.json() as ComparisonResult);
+      await refreshHistory();
+    } catch {
+      setComparisonError("The comparison could not be completed.");
+    } finally {
+      setComparisonLoading(false);
+    }
+  }
+
   const isRunning = status === "running";
   const selectedScenario = SCENARIOS.find((scenario) => scenario.id === selectedScenarioId);
 
@@ -310,6 +339,8 @@ export default function Home() {
           onChange={(event) => {
             setSelectedScenarioId(event.target.value);
             setEvaluation(null);
+            setComparisonResult(null);
+            setComparisonError(null);
           }}
           disabled={isRunning}
           style={{
@@ -356,6 +387,34 @@ export default function Home() {
               }}
             />
           </>
+        )}
+        {selectedScenarioId && comparableScenarioIds.has(selectedScenarioId) && (
+          <div style={{ marginTop: 12 }}>
+            <button type="button" onClick={() => void handleComparison()} disabled={isRunning || comparisonLoading}
+              style={{ padding: "9px 14px", border: "1px solid #2457d6", borderRadius: 6, background: "#fff", color: "#2457d6", font: "inherit", cursor: "pointer" }}>
+              {comparisonLoading ? "Running baseline and structured…" : "Run baseline / structured comparison"}
+            </button>
+            <p style={{ margin: "6px 0 0", color: "#536078" }}>Same scenario, provider, model, tools, and evaluator; no winner is selected.</p>
+            {comparisonError && <p role="alert" style={{ color: "#8f2424" }}>{comparisonError}</p>}
+            {comparisonResult && (
+              <div aria-live="polite" style={{ marginTop: 10 }}>
+                <p>Comparison {comparisonResult.comparisonId}</p>
+                <ul>
+                  {comparisonResult.runs.map((run) => (
+                    <li key={run.id}>
+                      {run.configurationId} — experiment {run.id} {run.historySaved ? "(saved)" : "(history not saved)"}{" "}
+                      {run.historySaved && <button type="button" onClick={() => {
+                        setSelectedHistoryId(run.id);
+                        setHistoricalExperiment(null);
+                        setHistoricalError(null);
+                        setHistoricalLoading(true);
+                      }}>Open history detail</button>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         )}
         <button
           type="submit"
@@ -523,6 +582,7 @@ export default function Home() {
                     }}
                   >
                     <strong>{scenario ? scenario.title : summary.scenarioId ?? "Custom task"}</strong>
+                    {summary.configurationId && <span> · {summary.configurationId}</span>}
                     <span> · {summary.status} · {new Date(summary.endedAt).toLocaleString()}</span>
                     {summary.evaluation && <span> · {summary.evaluation.passed ? "PASS" : "FAIL"}</span>}
                     <div style={{ marginTop: 4, color: "#536078", overflowWrap: "anywhere" }}>{summary.task}</div>
@@ -548,6 +608,11 @@ export default function Home() {
                   {SCENARIOS.find((item) => item.id === historicalExperiment.scenarioId)?.title ??
                     historicalExperiment.scenarioId ?? "Custom task"}
                 </h3>
+                {historicalExperiment.configurationId && (
+                  <p style={{ margin: "0 0 8px", color: "#536078" }}>
+                    Comparison {historicalExperiment.comparisonId} · {historicalExperiment.configurationId}
+                  </p>
+                )}
                 <p style={{ margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{historicalExperiment.task}</p>
                 <p style={{ margin: "0 0 8px", color: "#536078" }}>
                   {historicalExperiment.status} · {new Date(historicalExperiment.startedAt).toLocaleString()} – {new Date(historicalExperiment.endedAt).toLocaleString()} · {historicalExperiment.durationMs} ms
@@ -574,3 +639,10 @@ export default function Home() {
     </main>
   );
 }
+
+const comparableScenarioIds = new Set([
+  "direct-text",
+  "calculator-once",
+  "calculator-three-steps",
+  "unknown-tool-failure",
+]);

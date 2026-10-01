@@ -5,7 +5,7 @@ import { dirname, isAbsolute, join } from "node:path";
 import type { EvaluationResult, ExperimentEvent } from "./types";
 
 export interface ExperimentHistoryRecord {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   id: string;
   task: string;
   status: "completed" | "failed";
@@ -17,15 +17,18 @@ export interface ExperimentHistoryRecord {
   errorMessage?: string;
   evaluation?: EvaluationResult;
   events: ExperimentEvent[];
+  comparisonId?: string;
+  configurationId?: "baseline" | "structured";
 }
 
 export type ExperimentHistorySummary = Pick<
   ExperimentHistoryRecord,
-  "id" | "task" | "status" | "startedAt" | "endedAt" | "durationMs" | "scenarioId" | "evaluation"
+  | "id" | "task" | "status" | "startedAt" | "endedAt" | "durationMs" | "scenarioId" | "evaluation"
+  | "comparisonId" | "configurationId"
 >;
 
 interface ExperimentHistorySnapshot {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   records: ExperimentHistoryRecord[];
 }
 
@@ -78,7 +81,7 @@ export class ExperimentHistoryStore {
       .sort((left, right) =>
         Date.parse(right.endedAt) - Date.parse(left.endedAt) || compareIds(left.id, right.id),
       )
-      .map(({ id, task, status, startedAt, endedAt, durationMs, scenarioId, evaluation }) => ({
+      .map(({ id, task, status, startedAt, endedAt, durationMs, scenarioId, evaluation, comparisonId, configurationId }) => ({
         id,
         task,
         status,
@@ -87,6 +90,8 @@ export class ExperimentHistoryStore {
         durationMs,
         ...(scenarioId === undefined ? {} : { scenarioId }),
         ...(evaluation === undefined ? {} : { evaluation }),
+        ...(comparisonId === undefined ? {} : { comparisonId }),
+        ...(configurationId === undefined ? {} : { configurationId }),
       }));
   }
 
@@ -103,6 +108,7 @@ export class ExperimentHistoryStore {
     }
 
     snapshot.records.push(record);
+    if (record.schemaVersion === 2) snapshot.schemaVersion = 2;
     snapshot.records.sort((left, right) =>
       left.endedAt.localeCompare(right.endedAt) || left.id.localeCompare(right.id),
     );
@@ -130,7 +136,7 @@ export class ExperimentHistoryStore {
     if (!isPlainRecord(value)) {
       throw new ExperimentHistoryError("invalid_snapshot");
     }
-    if (value.schemaVersion !== 1) {
+    if (value.schemaVersion !== 1 && value.schemaVersion !== 2) {
       throw new ExperimentHistoryError("unsupported_schema");
     }
     if (!hasExactKeys(value, ["schemaVersion", "records"]) || !Array.isArray(value.records)) {
@@ -142,7 +148,10 @@ export class ExperimentHistoryStore {
       throw new ExperimentHistoryError("invalid_snapshot");
     }
 
-    return { schemaVersion: 1, records };
+    if (value.schemaVersion === 1 && records.some((record) => record.schemaVersion !== 1)) {
+      throw new ExperimentHistoryError("invalid_snapshot");
+    }
+    return { schemaVersion: value.schemaVersion, records };
   }
 
   private async replaceSnapshot(snapshot: ExperimentHistorySnapshot): Promise<void> {
@@ -171,7 +180,7 @@ function sanitizeRecord(record: ExperimentHistoryRecord): ExperimentHistoryRecor
   }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: record.schemaVersion,
     id: record.id,
     task: record.task,
     status: record.status,
@@ -184,6 +193,10 @@ function sanitizeRecord(record: ExperimentHistoryRecord): ExperimentHistoryRecor
     ...(record.evaluation === undefined ? {} : {
       evaluation: { passed: record.evaluation.passed, reason: record.evaluation.reason },
     }),
+    ...(record.schemaVersion === 2 ? {
+      comparisonId: record.comparisonId,
+      configurationId: record.configurationId,
+    } : {}),
     events: record.events.map((event) => sanitizeEvent(event, false)),
   };
 }
@@ -195,7 +208,7 @@ function parseRecord(value: unknown): ExperimentHistoryRecord {
 
   const record = value as ExperimentHistoryRecord;
   return {
-    schemaVersion: 1,
+    schemaVersion: record.schemaVersion,
     id: record.id,
     task: record.task,
     status: record.status,
@@ -208,6 +221,10 @@ function parseRecord(value: unknown): ExperimentHistoryRecord {
     ...(record.evaluation === undefined ? {} : {
       evaluation: { passed: record.evaluation.passed, reason: record.evaluation.reason },
     }),
+    ...(record.schemaVersion === 2 ? {
+      comparisonId: record.comparisonId,
+      configurationId: record.configurationId,
+    } : {}),
     events: record.events.map((event) => sanitizeEvent(event, true)),
   };
 }
@@ -217,11 +234,11 @@ function isValidRecord(value: unknown, strictKeys: boolean): value is Experiment
 
   const allowedKeys = [
     "schemaVersion", "id", "task", "status", "startedAt", "endedAt", "durationMs",
-    "scenarioId", "output", "errorMessage", "evaluation", "events",
+    "scenarioId", "output", "errorMessage", "evaluation", "events", "comparisonId", "configurationId",
   ];
   if (strictKeys && !hasOnlyKeys(value, allowedKeys)) return false;
   if (
-    value.schemaVersion !== 1 ||
+    (value.schemaVersion !== 1 && value.schemaVersion !== 2) ||
     typeof value.id !== "string" || value.id.length === 0 ||
     typeof value.task !== "string" ||
     (value.status !== "completed" && value.status !== "failed") ||
@@ -243,6 +260,11 @@ function isValidRecord(value: unknown, strictKeys: boolean): value is Experiment
   if (value.status === "failed" && (value.output !== undefined || value.errorMessage === undefined)) return false;
 
   if (value.evaluation !== undefined && value.scenarioId === undefined) return false;
+  if (value.schemaVersion === 1 && (value.comparisonId !== undefined || value.configurationId !== undefined)) return false;
+  if (value.schemaVersion === 2 && (
+    typeof value.comparisonId !== "string" || value.comparisonId.length === 0 ||
+    (value.configurationId !== "baseline" && value.configurationId !== "structured")
+  )) return false;
 
   return value.events.every((event) =>
     isValidEvent(event, strictKeys) && event.experimentId === value.id,
