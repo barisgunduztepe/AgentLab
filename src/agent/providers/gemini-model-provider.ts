@@ -1,5 +1,6 @@
 import { GoogleGenAI, type Interactions } from "@google/genai";
 import type { ModelProvider, ModelResponse, ModelTool } from "../model-provider";
+import { RetryableProviderError } from "../retryable-provider-error";
 
 export class GeminiModelProvider implements ModelProvider {
   private readonly client: GoogleGenAI;
@@ -56,8 +57,6 @@ export class GeminiModelProvider implements ModelProvider {
 
     const previousInteractionId = this.previousInteractionId;
     const functionName = this.pendingFunctionName;
-    this.pendingCallId = undefined;
-    this.pendingFunctionName = undefined;
 
     const interaction = await this.createInteraction({
       model: this.model,
@@ -78,8 +77,14 @@ export class GeminiModelProvider implements ModelProvider {
     params: Interactions.CreateModelInteractionParamsNonStreaming,
   ): Promise<Interactions.Interaction> {
     try {
-      return await this.client.interactions.create({ ...params, stream: false }) as Interactions.Interaction;
-    } catch {
+      return await this.client.interactions.create(
+        { ...params, stream: false },
+        { maxRetries: 0 },
+      ) as Interactions.Interaction;
+    } catch (error) {
+      if (isRetryableGeminiError(error)) {
+        throw new RetryableProviderError();
+      }
       throw new Error("Gemini request failed.");
     }
   }
@@ -150,6 +155,60 @@ export class GeminiModelProvider implements ModelProvider {
       input: argumentsValue.expression,
     };
   }
+}
+
+function isRetryableGeminiError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const details = error as {
+    name?: unknown;
+    status?: unknown;
+    statusCode?: unknown;
+    error?: unknown;
+  };
+  const name = typeof details.name === "string" ? details.name : "";
+
+  if (["AbortError", "APIUserAbortError", "RequestAbortedError"].includes(name)) {
+    return false;
+  }
+
+  const status = typeof details.status === "number" ? details.status : details.statusCode;
+  if ([408, 500, 502, 503, 504].includes(typeof status === "number" ? status : -1)) {
+    return true;
+  }
+
+  if (status === 429) {
+    return hasExplicitRateLimitCode(details.error);
+  }
+
+  return ["APIConnectionError", "APIConnectionTimeoutError"].includes(name);
+}
+
+function hasExplicitRateLimitCode(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  const details = error as { code?: unknown; reason?: unknown; details?: unknown };
+  const rateLimitCodes = new Set(["RATE_LIMIT_EXCEEDED", "rate_limit_exceeded"]);
+  if (rateLimitCodes.has(String(details.code)) || rateLimitCodes.has(String(details.reason))) {
+    return true;
+  }
+
+  if (!Array.isArray(details.details)) {
+    return false;
+  }
+
+  return details.details.slice(0, 10).some((detail: unknown) => {
+    if (typeof detail !== "object" || detail === null) {
+      return false;
+    }
+
+    const structuredDetail = detail as { code?: unknown; reason?: unknown };
+    return rateLimitCodes.has(String(structuredDetail.code)) || rateLimitCodes.has(String(structuredDetail.reason));
+  });
 }
 
 function getCalculatorFunctionTools(tools: readonly ModelTool[]) {

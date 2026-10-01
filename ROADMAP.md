@@ -12,8 +12,9 @@ Bu belge, AgentLab'in mevcut repository durumunu ve onaylanmış geliştirme sı
 - v0.3.1 Structured Tool-Call Contract tamamlandı.
 - v0.3.2 Bounded Tool Execution Loop tamamlandı.
 - v0.3.3 OpenAI tool calling implementasyonu ve otomatik doğrulamaları tamamlandı; hesapta $0.00 API kredisi olduğundan gerçek API smoke testi yapılmadı ve canlı davranış doğrulanmadı.
-- v0.3.4 Gemini provider implementasyonu tamamlandı; SDK davranışı mock testlerle doğrulandı. Manuel REST kontrolünde toolsuz Interactions isteği başarılı oldu; calculator tool şemalı istekler geçici yüksek talep kaynaklı `503 service_unavailable` hatası verdi. AgentLab'in canlı SDK tool-calling davranışı başarılı smoke test ile henüz doğrulanmadı.
-- Sonraki planlı milestone: **v0.4.1 Sabit deney senaryoları** (Gemini Free Tier manuel smoke testinden sonra).
+- v0.3.4 Gemini provider implementasyonu tamamlandı; SDK davranışı mock testlerle doğrulandı. Manuel REST kontrolünde toolsuz Interactions isteği başarılı oldu; aynı calculator tool şemalı istek farklı denemelerde hem başarılı oldu hem de geçici yüksek talep kaynaklı `503 service_unavailable` aldı. AgentLab'in canlı SDK tool-calling davranışı doğrulanmadı; yeni smoke testleri ertelendi.
+- v0.3.5 Provider Resilience implementasyonu tamamlandı; provider-neutral retry decorator'ı OpenAI ve Gemini'yi sarıyor, FakeModelProvider'ı sarmıyor. Otomatik doğrulama mock tabanlıdır; canlı Gemini smoke testi yapılmadı.
+- Sonraki planlı milestone: **v0.4.1 Sabit deney senaryoları**; Gemini Free Tier canlı smoke test durumu hâlâ doğrulanmamış ve testler ertelenmiştir.
 
 ## v0.1 — Single Agent Foundation
 
@@ -104,7 +105,17 @@ Calculator function schema'sı bilinçli olarak OpenAI provider içinde tanıml�
 
 **Uygulama:** Google'ın resmi `@google/genai` SDK'sı Interactions API üzerinden calculator native function calling için kullanılır. Provider `GEMINI_API_KEY` ve `GEMINI_MODEL` değerlerini server-side environment'tan okur. Seçim `AGENTLAB_MODEL_PROVIDER=gemini` ile açıktır; sessiz fallback yoktur. Gemini function-call ID, provider içinde saklanan interaction ID ve `function_result.call_id` ile eşleştirilir. Ortak `ModelProvider` sözleşmesi ve `SingleAgent` değişmeden kalır. Tek yanıt başına bir tool call ve en fazla üç tool execution sınırları korunur.
 
-**Doğrulama durumu:** Provider SDK davranışı mock testlerle kapsanmıştır; otomatik testler ağa çıkmaz. Manuel REST kontrolünde toolsuz istek başarılı, calculator tool şemalı istek ise geçici `503 service_unavailable` kapasite hatası döndürmüştür. AgentLab'in canlı SDK tool-calling davranışı henüz başarılı smoke test ile doğrulanmamıştır. Retry/backoff bu milestone'a dahil değildir. Calculator schema'sı bu milestone için provider içinde tutulur; yeni tool eklenirken `Tool` sözleşmesine taşıma yeniden değerlendirilecektir.
+**Doğrulama durumu:** Provider SDK davranışı mock testlerle kapsanmıştır; otomatik testler ağa çıkmaz. Manuel REST kontrolünde toolsuz istek başarılı; eşdeğer calculator tool şemalı istekler farklı denemelerde başarılı olmuş veya geçici `503 service_unavailable` kapasite hatası döndürmüştür. AgentLab'in canlı SDK tool-calling davranışı başarılı smoke test ile doğrulanmamıştır. Retry/backoff v0.3.4 kapsamına dahil değildi. Calculator schema'sı bu milestone için provider içinde tutulur; yeni tool eklenirken `Tool` sözleşmesine taşıma yeniden değerlendirilecektir.
+
+### 🟡 v0.3.5 Provider Resilience
+
+**Amaç:** Geçici gerçek-provider istek hatalarında sınırlı ve provider-neutral retry sağlamak; kalıcı, yapılandırma, auth, abort ve belirsiz hataları tekrar etmemek.
+
+**Uygulama:** `RetryingModelProvider`, `ModelProvider` sözleşmesini değiştirmeden OpenAI ve Gemini provider'larını sarar. Fake provider deterministik kalır ve sarılmaz. Üç toplam deneme, 500 ms başlangıç backoff cap'i, 2 kat exponential factor, 4000 ms üst cap ve full jitter uygulanır. Retry-After ve provider/model fallback kapsam dışıdır. SDK dahili retry'ları OpenAI `maxRetries: 0` ve Gemini Interactions request `maxRetries: 0` ile kapatılır.
+
+**Hata sınıflandırması:** Provider adaptörleri yapılandırılmış SDK alanları kullanır; ham hata metni incelenmez. 408/500/502/503/504 retry edilir. OpenAI 429 yalnızca `rate_limit_exceeded` koduyla; Gemini 429 yalnızca açık `RATE_LIMIT_EXCEEDED` kod/reason alanıyla retry edilir. Belirsiz Gemini `RESOURCE_EXHAUSTED` 429 retry edilmez. Tanınmış connection/timeout hataları retry edilir; abort ve sınıflandırılmamış hatalar edilmez. Continuation state istek başarıyla sonuçlanana kadar korunur; retry aynı call ID/tool sonucunu kullanır ve tool'u yeniden çalıştırmaz. Belirsiz transport hatası halinde model üretimi tekrarlanıp ücret doğurabilir.
+
+**Doğrulama:** Otomatik testler SDK davranışını mock'lar, gerçek ağa çıkmaz. Gemini REST calculator isteği değişken sonuç vermiştir (başarılı yanıt ve geçici 503); AgentLab canlı tool-calling davranışı doğrulanmamış olup smoke testler ertelenmiştir. Provider/model fallback kapsam dışıdır.
 
 ## v0.4 — Deterministic Scenarios & Simple Evaluation
 

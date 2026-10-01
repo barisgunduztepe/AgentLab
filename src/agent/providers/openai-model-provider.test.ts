@@ -1,20 +1,40 @@
-import OpenAI from "openai";
+import OpenAI, { APIConnectionError, APIError, APIUserAbortError } from "openai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpenAIModelProvider } from "./openai-model-provider";
+import { RetryableProviderError } from "../retryable-provider-error";
 
 const sdk = vi.hoisted(() => ({
   create: vi.fn(),
   constructor: vi.fn(),
+  APIError: class MockAPIError extends Error {
+    status: number | undefined;
+    code: string | undefined;
+
+    constructor(status: number | undefined, error?: { code?: string }) {
+      super("private structured SDK error details");
+      this.status = status;
+      this.code = error?.code;
+    }
+  },
+  APIConnectionError: class MockAPIConnectionError extends Error {
+    constructor() { super("transport"); }
+  },
+  APIUserAbortError: class MockAPIUserAbortError extends Error {
+    constructor() { super("aborted"); }
+  },
 }));
 
 vi.mock("openai", () => ({
   default: class OpenAI {
     responses = { create: sdk.create };
 
-    constructor(options: { apiKey: string }) {
+    constructor(options: { apiKey: string; maxRetries: number }) {
       sdk.constructor(options);
     }
   },
+  APIError: sdk.APIError,
+  APIConnectionError: sdk.APIConnectionError,
+  APIUserAbortError: sdk.APIUserAbortError,
 }));
 
 const originalApiKey = process.env.OPENAI_API_KEY;
@@ -49,6 +69,15 @@ function makeResponse(
 
 function functionCall(callId: string, name = "calculator", args = '{"expression":"12 * 8"}') {
   return { type: "function_call" as const, call_id: callId, name, arguments: args };
+}
+
+function makeAPIError(status: number, code?: string): APIError {
+  return new APIError(
+    status,
+    code ? { code } : undefined,
+    "private structured SDK error details",
+    new Headers(),
+  );
 }
 
 const calculator = {
@@ -86,6 +115,7 @@ describe("OpenAIModelProvider", () => {
       parallel_tool_calls: false,
       tool_choice: "auto",
     });
+    expect(sdk.constructor).toHaveBeenCalledWith({ apiKey: "test-only-key", maxRetries: 0 });
   });
 
   it("returns tool output with the matching call id and previous response id", async () => {
@@ -117,6 +147,54 @@ describe("OpenAIModelProvider", () => {
       "Tool call continuation is invalid.",
     );
     expect(sdk.create).toHaveBeenCalledOnce();
+  });
+
+  it("preserves continuation state after a retryable request failure", async () => {
+    sdk.create
+      .mockResolvedValueOnce(makeResponse("resp-1", [functionCall("call-1")]))
+      .mockRejectedValueOnce(makeAPIError(503))
+      .mockResolvedValueOnce(makeResponse("resp-2", [], "The answer is 96."));
+    const provider = new OpenAIModelProvider();
+    await provider.generateResponse("Calculate 12 * 8.", [calculator]);
+
+    await expect(provider.continueAfterToolCall("call-1", "96")).rejects.toBeInstanceOf(RetryableProviderError);
+    await expect(provider.continueAfterToolCall("call-1", "96")).resolves.toEqual({
+      type: "text",
+      text: "The answer is 96.",
+    });
+
+    expect(sdk.create.mock.calls[1][0]).toEqual(sdk.create.mock.calls[2][0]);
+  });
+
+  it("classifies OpenAI 503 as retryable without exposing provider details", async () => {
+    sdk.create.mockRejectedValueOnce(makeAPIError(503));
+    const provider = new OpenAIModelProvider();
+
+    await expect(provider.generateResponse("Say hello.")).rejects.toMatchObject({
+      name: "RetryableProviderError",
+      message: "Provider request failed.",
+    });
+  });
+
+  it("retries only the structured temporary OpenAI rate-limit code", async () => {
+    sdk.create.mockRejectedValueOnce(makeAPIError(429, "rate_limit_exceeded"));
+    const provider = new OpenAIModelProvider();
+    await expect(provider.generateResponse("Say hello.")).rejects.toBeInstanceOf(RetryableProviderError);
+
+    sdk.create.mockRejectedValueOnce(makeAPIError(429, "insufficient_quota"));
+    await expect(provider.generateResponse("Say hello.")).rejects.toThrow("OpenAI request failed.");
+  });
+
+  it("classifies OpenAI transport failures but not aborts or unknown errors", async () => {
+    sdk.create.mockRejectedValueOnce(new APIConnectionError({ message: "transport" }));
+    const provider = new OpenAIModelProvider();
+    await expect(provider.generateResponse("Say hello.")).rejects.toBeInstanceOf(RetryableProviderError);
+
+    sdk.create.mockRejectedValueOnce(new APIUserAbortError({ message: "aborted" }));
+    await expect(provider.generateResponse("Say hello.")).rejects.toThrow("OpenAI request failed.");
+
+    sdk.create.mockRejectedValueOnce(new Error("unknown failure"));
+    await expect(provider.generateResponse("Say hello.")).rejects.toThrow("OpenAI request failed.");
   });
 
   it("fails safely when the model returns multiple function calls", async () => {

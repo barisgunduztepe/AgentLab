@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createModelProvider } from "./create-model-provider";
 import { FakeModelProvider } from "./providers/fake-model-provider";
-import { GeminiModelProvider } from "./providers/gemini-model-provider";
-import { OpenAIModelProvider } from "./providers/openai-model-provider";
+import { RetryingModelProvider } from "./providers/retrying-model-provider";
 
 const envNames = ["AGENTLAB_MODEL_PROVIDER", "OPENAI_API_KEY", "OPENAI_MODEL", "GEMINI_API_KEY", "GEMINI_MODEL"] as const;
 const previousEnv = new Map(envNames.map((name) => [name, process.env[name]]));
@@ -51,7 +50,7 @@ describe("createModelProvider", () => {
     process.env.OPENAI_API_KEY = "test-key";
     process.env.OPENAI_MODEL = "gpt-6-luna";
 
-    expect(createModelProvider()).toBeInstanceOf(OpenAIModelProvider);
+    expect(createModelProvider()).toBeInstanceOf(RetryingModelProvider);
   });
 
   it("requires server-side Gemini credentials and model configuration", () => {
@@ -70,6 +69,6 @@ describe("createModelProvider", () => {
     process.env.GEMINI_API_KEY = "test-key";
     process.env.GEMINI_MODEL = "gemini-test-model";
 
-    expect(createModelProvider()).toBeInstanceOf(GeminiModelProvider);
+    expect(createModelProvider()).toBeInstanceOf(RetryingModelProvider);
   });
 });

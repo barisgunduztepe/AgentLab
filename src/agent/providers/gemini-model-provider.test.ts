@@ -1,6 +1,7 @@
 import type { Interactions } from "@google/genai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GeminiModelProvider } from "./gemini-model-provider";
+import { RetryableProviderError } from "../retryable-provider-error";
 
 const sdk = vi.hoisted(() => ({
   create: vi.fn(),
@@ -85,7 +86,7 @@ describe("GeminiModelProvider", () => {
           additionalProperties: false,
         },
       }],
-    });
+    }, { maxRetries: 0 });
   });
 
   it("maps one native function call and returns its result using matching IDs", async () => {
@@ -121,7 +122,7 @@ describe("GeminiModelProvider", () => {
         description: calculator.description,
         parameters: expect.any(Object),
       }],
-    });
+    }, { maxRetries: 0 });
   });
 
   it("rejects a mismatched call ID without making a continuation request", async () => {
@@ -133,6 +134,65 @@ describe("GeminiModelProvider", () => {
       "Tool call continuation is invalid.",
     );
     expect(sdk.create).toHaveBeenCalledOnce();
+  });
+
+  it("preserves continuation state after a retryable request failure", async () => {
+    sdk.create
+      .mockResolvedValueOnce(makeInteraction("interaction-1", [functionCall("native-call-1")], undefined, "requires_action"))
+      .mockRejectedValueOnce({ name: "ApiError", status: 503, error: { status: "UNAVAILABLE" } })
+      .mockResolvedValueOnce(makeInteraction("interaction-2", [], "The answer is 96."));
+    const provider = new GeminiModelProvider();
+    await provider.generateResponse("Calculate 12 * 8.", [calculator]);
+
+    await expect(provider.continueAfterToolCall("native-call-1", "96")).rejects.toBeInstanceOf(RetryableProviderError);
+    await expect(provider.continueAfterToolCall("native-call-1", "96")).resolves.toEqual({
+      type: "text",
+      text: "The answer is 96.",
+    });
+    expect(sdk.create.mock.calls[1]).toEqual(sdk.create.mock.calls[2]);
+  });
+
+  it("classifies Gemini 503 as retryable without exposing provider details", async () => {
+    sdk.create.mockRejectedValueOnce({
+      name: "ApiError",
+      status: 503,
+      error: { status: "UNAVAILABLE", message: "private provider details" },
+    });
+    const provider = new GeminiModelProvider();
+
+    await expect(provider.generateResponse("Say hello.")).rejects.toMatchObject({
+      name: "RetryableProviderError",
+      message: "Provider request failed.",
+    });
+  });
+
+  it("retries only an explicit Gemini rate-limit reason, not ambiguous resource exhaustion", async () => {
+    sdk.create.mockRejectedValueOnce({
+      name: "RateLimitError",
+      status: 429,
+      error: { status: "RESOURCE_EXHAUSTED", details: [{ reason: "RATE_LIMIT_EXCEEDED" }] },
+    });
+    const provider = new GeminiModelProvider();
+    await expect(provider.generateResponse("Say hello.")).rejects.toBeInstanceOf(RetryableProviderError);
+
+    sdk.create.mockRejectedValueOnce({
+      name: "RateLimitError",
+      status: 429,
+      error: { status: "RESOURCE_EXHAUSTED" },
+    });
+    await expect(provider.generateResponse("Say hello.")).rejects.toThrow("Gemini request failed.");
+  });
+
+  it("classifies Gemini transport failures but not aborts or unknown errors", async () => {
+    sdk.create.mockRejectedValueOnce({ name: "APIConnectionTimeoutError" });
+    const provider = new GeminiModelProvider();
+    await expect(provider.generateResponse("Say hello.")).rejects.toBeInstanceOf(RetryableProviderError);
+
+    sdk.create.mockRejectedValueOnce({ name: "APIUserAbortError" });
+    await expect(provider.generateResponse("Say hello.")).rejects.toThrow("Gemini request failed.");
+
+    sdk.create.mockRejectedValueOnce(new Error("unknown failure"));
+    await expect(provider.generateResponse("Say hello.")).rejects.toThrow("Gemini request failed.");
   });
 
   it.each([

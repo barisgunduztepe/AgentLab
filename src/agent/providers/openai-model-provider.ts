@@ -1,5 +1,7 @@
 import OpenAI from "openai";
+import { APIConnectionError, APIError, APIUserAbortError } from "openai";
 import type { ModelProvider, ModelResponse, ModelTool } from "../model-provider";
+import { RetryableProviderError } from "../retryable-provider-error";
 
 export class OpenAIModelProvider implements ModelProvider {
   private readonly client: OpenAI;
@@ -21,7 +23,7 @@ export class OpenAIModelProvider implements ModelProvider {
     }
 
     this.model = model.trim();
-    this.client = new OpenAI({ apiKey });
+    this.client = new OpenAI({ apiKey, maxRetries: 0 });
   }
 
   async generateResponse(prompt: string, tools: readonly ModelTool[] = []): Promise<ModelResponse> {
@@ -44,7 +46,6 @@ export class OpenAIModelProvider implements ModelProvider {
       throw new Error("Tool call continuation is invalid.");
     }
 
-    this.pendingCallId = undefined;
     const response = await this.createResponse({
       model: this.model,
       previous_response_id: this.previousResponseId,
@@ -66,7 +67,10 @@ export class OpenAIModelProvider implements ModelProvider {
   ): Promise<OpenAI.Responses.Response> {
     try {
       return await this.client.responses.create(params);
-    } catch {
+    } catch (error) {
+      if (isRetryableOpenAIError(error)) {
+        throw new RetryableProviderError();
+      }
       throw new Error("OpenAI request failed.");
     }
   }
@@ -117,6 +121,26 @@ export class OpenAIModelProvider implements ModelProvider {
       input: parsedArguments.expression,
     };
   }
+}
+
+function isRetryableOpenAIError(error: unknown): boolean {
+  if (error instanceof APIUserAbortError) {
+    return false;
+  }
+
+  if (error instanceof APIConnectionError) {
+    return true;
+  }
+
+  if (!(error instanceof APIError)) {
+    return false;
+  }
+
+  if ([408, 500, 502, 503, 504].includes(error.status ?? -1)) {
+    return true;
+  }
+
+  return error.status === 429 && error.code === "rate_limit_exceeded";
 }
 
 function getCalculatorFunctionTools(tools: readonly ModelTool[]): OpenAI.Responses.FunctionTool[] {

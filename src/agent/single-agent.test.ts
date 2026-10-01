@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ModelProvider } from "./model-provider";
 import { FakeModelProvider } from "./providers/fake-model-provider";
+import { RetryingModelProvider } from "./providers/retrying-model-provider";
+import { RetryableProviderError } from "./retryable-provider-error";
 import { SingleAgent, type ToolLifecycleSignal } from "./single-agent";
 import { CalculatorTool } from "../tools/calculator-tool";
 import type { Tool } from "../tools/tool";
@@ -92,6 +94,45 @@ describe("SingleAgent", () => {
     expect(generateResponse).toHaveBeenCalledOnce();
     expect(generateResponse.mock.calls[0][0]).toBe(task);
     expect(continueAfterToolCall).toHaveBeenCalledExactlyOnceWith("call-1", "96");
+  });
+
+  it("retries continuation without executing the tool again or exposing private values in events", async () => {
+    const callId = "provider-private-call-id";
+    const toolInput = "12 * 8";
+    const toolResult = "96";
+    const execute = vi.fn(async () => toolResult);
+    const tool: Tool = { name: "calculator", description: "Calculates arithmetic.", execute };
+    const continueAfterToolCall = vi.fn()
+      .mockRejectedValueOnce(new RetryableProviderError())
+      .mockResolvedValueOnce({ type: "text" as const, text: "The result is 96." });
+    const provider = new RetryingModelProvider({
+      async generateResponse() {
+        return { type: "tool_call", callId, toolName: "calculator", input: toolInput };
+      },
+      continueAfterToolCall,
+    }, {
+      sleep: async () => {},
+      random: () => 0,
+    });
+    const events: ToolLifecycleSignal[] = [];
+    const agent = new SingleAgent(provider, [tool]);
+
+    await expect(agent.run("Use the calculator and explain the result.", (event) => events.push(event))).resolves.toEqual({
+      type: "text",
+      text: "The result is 96.",
+    });
+
+    expect(execute).toHaveBeenCalledExactlyOnceWith(toolInput);
+    expect(continueAfterToolCall).toHaveBeenCalledTimes(2);
+    expect(continueAfterToolCall).toHaveBeenNthCalledWith(1, callId, toolResult);
+    expect(continueAfterToolCall).toHaveBeenNthCalledWith(2, callId, toolResult);
+    expect(events).toEqual([
+      { type: "tool.started", toolName: "calculator" },
+      { type: "tool.completed", toolName: "calculator" },
+    ]);
+    expect(JSON.stringify(events)).not.toContain(callId);
+    expect(JSON.stringify(events)).not.toContain(toolInput);
+    expect(JSON.stringify(events)).not.toContain(toolResult);
   });
 
   it("executes repeated valid tool calls within the budget", async () => {
