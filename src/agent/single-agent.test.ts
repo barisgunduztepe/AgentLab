@@ -1,11 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ModelProvider } from "./model-provider";
+import type { ModelProvider, ModelResponse } from "./model-provider";
 import { FakeModelProvider } from "./providers/fake-model-provider";
 import { RetryingModelProvider } from "./providers/retrying-model-provider";
 import { RetryableProviderError } from "./retryable-provider-error";
 import { SingleAgent, type ToolLifecycleSignal } from "./single-agent";
 import { CalculatorTool } from "../tools/calculator-tool";
 import type { Tool } from "../tools/tool";
+
+const fourthToolRequestFixture: readonly ModelResponse[] = [
+  { type: "tool_call", callId: "call-1", toolName: "counted", input: "one" },
+  { type: "tool_call", callId: "call-2", toolName: "counted", input: "two" },
+  { type: "tool_call", callId: "call-3", toolName: "counted", input: "three" },
+  { type: "tool_call", callId: "call-4", toolName: "counted", input: "four" },
+];
 
 describe("SingleAgent", () => {
   const unusedContinuation = async () => ({ type: "text" as const, text: "unused" });
@@ -160,12 +167,7 @@ describe("SingleAgent", () => {
   it("executes at most three tools and sends the third result before rejecting a fourth call", async () => {
     const execute = vi.fn(async (input: string) => `result-${input}`);
     const countedTool: Tool = { name: "counted", description: "Counts test calls.", execute };
-    const provider = new FakeModelProvider([
-      { type: "tool_call", callId: "call-1", toolName: "counted", input: "one" },
-      { type: "tool_call", callId: "call-2", toolName: "counted", input: "two" },
-      { type: "tool_call", callId: "call-3", toolName: "counted", input: "three" },
-      { type: "tool_call", callId: "call-4", toolName: "counted", input: "four" },
-    ]);
+    const provider = new FakeModelProvider(fourthToolRequestFixture);
     const continueAfterToolCall = vi.spyOn(provider, "continueAfterToolCall");
     const signals: ToolLifecycleSignal[] = [];
     const agent = new SingleAgent(provider, [countedTool]);

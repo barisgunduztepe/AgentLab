@@ -55,7 +55,7 @@ Bunlar sonraki sürümlerde değerlendirilecek.
 
 Proje küçük, test edilebilir ve geri alınabilir milestone'larla geliştirilecek. Her adımda önce kavram öğrenilecek; ardından küçük implementasyon, test, canlı doğrulama ve Git checkpoint'i gelecek.
 
-**Mevcut durum:** v0.3.5 Provider Resilience implementasyonu ve otomatik doğrulaması tamamlandı. Gemini toolsuz REST isteği başarılı oldu. Calculator tool şemalı REST isteği farklı denemelerde hem geçici `503 service_unavailable` aldı hem de başarılı oldu; sağlayıcı kapasitesi değişken. AgentLab üzerinden canlı tool-calling davranışı hâlâ doğrulanmamıştır ve yeni smoke testleri ertelenmiştir. v0.3.3 OpenAI canlı davranışı da gerçek API smoke testi yapılmadığı için doğrulanmamıştır.
+**Mevcut durum:** v0.4.1 Fixed Experiment Scenarios uygulaması ve otomatik doğrulamaları tamamlandı. v0.3.5 Provider Resilience da tamamlandı. Gemini toolsuz REST isteği başarılı oldu. Calculator tool şemalı REST isteği farklı denemelerde hem geçici `503 service_unavailable` aldı hem de başarılı oldu; sağlayıcı kapasitesi değişken. AgentLab üzerinden canlı tool-calling davranışı hâlâ doğrulanmamıştır ve yeni smoke testleri ertelenmiştir. v0.3.3 OpenAI canlı davranışı da gerçek API smoke testi yapılmadığı için doğrulanmamıştır.
 
 ## v0.3.3 — OpenAI Responses API
 
@@ -80,5 +80,11 @@ OpenAI ve Gemini provider'ları provider-neutral `RetryingModelProvider` ile sar
 Provider adaptörleri yalnızca yapılandırılmış SDK alanlarına göre sınıflandırma yapar. 408, 500, 502, 503 ve 504 geçici sayılır. OpenAI'de 429 yalnızca `code=rate_limit_exceeded` iken retry edilir; kota/billing veya kodu belirsiz 429 retry edilmez. Gemini'de 429 yalnızca yapılandırılmış hata `details[].reason` ya da `code` alanı açıkça `RATE_LIMIT_EXCEEDED` / `rate_limit_exceeded` ise retry edilir; yalnızca `RESOURCE_EXHAUSTED` bilgisi kota ve hız sınırını güvenle ayırmadığından retry edilmez. Tanınan connection/timeout SDK hata tipleri retry edilir; abort, auth/client/config, bilinmeyen ve sınıflandırılmamış hatalar edilmez. Ham provider mesajları istemciye veya loglara taşınmaz.
 
 SDK'lerin kendi retry'ları kapalıdır: OpenAI client `maxRetries: 0`, Gemini Interactions çağrısı `maxRetries: 0` kullanır; AgentLab retry katmanı tek retry sahibidir. Continuation isteği başarısız olursa provider içindeki pending call state korunur ve aynı call ID/tool sonucu ile tekrar denenir; tool'un kendisi tekrar çalıştırılmaz. Belirsiz bir transport hatasında sunucu ilk generation isteğini işlemiş olabilir; retry model çağrısını ve maliyeti tekrarlayabilir. Otomatik testler SDK'leri mock'lar, ağa çıkmaz. Canlı Gemini smoke testleri ertelenmiştir; AgentLab canlı davranışı doğrulanmış değildir. Provider/model fallback'i bu milestone'un kapsamı dışındadır.
+
+## v0.4.1 — Fixed Experiment Scenarios
+
+UI sabit TypeScript senaryo kataloğundan bilinen görevleri çalıştırabilir; serbest metin girişi de kullanılmaya devam eder. Senaryo `id`, `title`, `description` ve sabit `task` içerir. API `{ scenarioId }` değerini katalogda doğrulayıp görevi mevcut experiment akışına verir. `{ task, scenarioId }` birlikte gönderilirse istek `400` ile reddedilir; bilinmeyen senaryo için varsayılan senaryo veya serbest metin fallback'i yoktur.
+
+İlk katalog doğrudan metin yanıtı, tek calculator çağrısı, üç calculator çağrısı ve güvenli unknown-tool hatasını kapsar. Fake `ModelResponse[]` fixture'ları UI kataloğundan ayrı server-side dosyada tutulur ve yalnızca `AGENTLAB_MODEL_PROVIDER=fake` açıkça seçildiğinde kullanılır. OpenAI/Gemini aynı sabit görev metnini alır; model yanıtları deterministik değildir. `SingleAgent`, `runExperiment`, `ModelProvider` ve experiment/event tipleri değişmez; üç tool execution limiti korunur. Pass/fail değerlendirmesi, beklenen yanıt karşılaştırması ve scoring v0.4.2'ye bırakılmıştır.
 
 Sürümlerin ve milestone'ların ayrıntılı durumu için [ROADMAP.md](ROADMAP.md) dosyasına bakın.

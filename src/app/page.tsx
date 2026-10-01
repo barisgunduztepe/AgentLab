@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ExperimentEvent, ExperimentOutput, ExperimentStatus } from "@/experiments/types";
+import { SCENARIOS } from "@/experiments/scenarios";
 
 type UiStatus = ExperimentStatus | "idle";
 
@@ -20,6 +21,7 @@ function statusLabel(status: UiStatus): string {
 
 export default function Home() {
   const [task, setTask] = useState("");
+  const [selectedScenarioId, setSelectedScenarioId] = useState("");
   const [status, setStatus] = useState<UiStatus>("idle");
   const [events, setEvents] = useState<ExperimentEvent[]>([]);
   const [startedAt, setStartedAt] = useState<string | null>(null);
@@ -32,7 +34,7 @@ export default function Home() {
     event.preventDefault();
     const submittedTask = task.trim();
 
-    if (!submittedTask || status === "running") {
+    if ((!selectedScenarioId && !submittedTask) || status === "running") {
       return;
     }
 
@@ -48,7 +50,7 @@ export default function Home() {
       const response = await fetch("/api/experiments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task: submittedTask }),
+        body: JSON.stringify(selectedScenarioId ? { scenarioId: selectedScenarioId } : { task: submittedTask }),
       });
 
       if (!response.ok) {
@@ -152,6 +154,7 @@ export default function Home() {
   }
 
   const isRunning = status === "running";
+  const selectedScenario = SCENARIOS.find((scenario) => scenario.id === selectedScenarioId);
 
   return (
     <main
@@ -179,39 +182,72 @@ export default function Home() {
           background: "#fff",
         }}
       >
-        <label htmlFor="task" style={{ display: "block", marginBottom: 8, fontWeight: 600 }}>
-          Task
+        <label htmlFor="experiment-mode" style={{ display: "block", marginBottom: 8, fontWeight: 600 }}>
+          Experiment type
         </label>
-        <textarea
-          id="task"
-          value={task}
-          onChange={(event) => setTask(event.target.value)}
-          placeholder="Describe what the agent should do..."
-          rows={5}
+        <select
+          id="experiment-mode"
+          value={selectedScenarioId}
+          onChange={(event) => setSelectedScenarioId(event.target.value)}
           disabled={isRunning}
           style={{
-            boxSizing: "border-box",
+            display: "block",
             width: "100%",
-            padding: 12,
+            marginBottom: 16,
+            padding: 10,
             border: "1px solid #aeb8c8",
             borderRadius: 6,
             font: "inherit",
-            resize: "vertical",
           }}
-        />
+        >
+          <option value="">Custom task</option>
+          {SCENARIOS.map((scenario) => (
+            <option key={scenario.id} value={scenario.id}>{scenario.title}</option>
+          ))}
+        </select>
+        {selectedScenario ? (
+          <div aria-live="polite" style={{ padding: 12, border: "1px solid #d7dce5", borderRadius: 6 }}>
+            <p style={{ margin: "0 0 6px", fontWeight: 600 }}>{selectedScenario.title}</p>
+            <p style={{ margin: "0 0 8px", color: "#536078" }}>{selectedScenario.description}</p>
+            <p style={{ margin: 0 }}>{selectedScenario.task}</p>
+          </div>
+        ) : (
+          <>
+            <label htmlFor="task" style={{ display: "block", marginBottom: 8, fontWeight: 600 }}>
+              Custom task
+            </label>
+            <textarea
+              id="task"
+              value={task}
+              onChange={(event) => setTask(event.target.value)}
+              placeholder="Describe what the agent should do..."
+              rows={5}
+              disabled={isRunning}
+              style={{
+                boxSizing: "border-box",
+                width: "100%",
+                padding: 12,
+                border: "1px solid #aeb8c8",
+                borderRadius: 6,
+                font: "inherit",
+                resize: "vertical",
+              }}
+            />
+          </>
+        )}
         <button
           type="submit"
-          disabled={isRunning || task.trim().length === 0}
+          disabled={isRunning || (!selectedScenarioId && task.trim().length === 0)}
           style={{
             marginTop: 12,
             padding: "10px 16px",
             border: 0,
             borderRadius: 6,
-            background: isRunning || task.trim().length === 0 ? "#9aa4b3" : "#2457d6",
+            background: isRunning || (!selectedScenarioId && task.trim().length === 0) ? "#9aa4b3" : "#2457d6",
             color: "#fff",
             font: "inherit",
             fontWeight: 600,
-            cursor: isRunning || task.trim().length === 0 ? "not-allowed" : "pointer",
+            cursor: isRunning || (!selectedScenarioId && task.trim().length === 0) ? "not-allowed" : "pointer",
           }}
         >
           {isRunning ? "Experiment running…" : "Start Experiment"}

@@ -24,6 +24,15 @@ describe("createModelProvider", () => {
     expect(createModelProvider()).toBeInstanceOf(FakeModelProvider);
   });
 
+  it("uses an optional response fixture only when FakeModelProvider is explicitly selected", async () => {
+    process.env.AGENTLAB_MODEL_PROVIDER = "fake";
+    const fakeResponses = [{ type: "text" as const, text: "Scenario fixture response." }];
+
+    await expect(createModelProvider({ fakeResponses }).generateResponse("Scenario task.")).resolves.toEqual(
+      fakeResponses[0],
+    );
+  });
+
   it.each([undefined, "", "groq", "OpenAI"])("rejects missing or invalid provider selection: %s", (value) => {
     if (value === undefined) {
       delete process.env.AGENTLAB_MODEL_PROVIDER;
@@ -50,7 +59,9 @@ describe("createModelProvider", () => {
     process.env.OPENAI_API_KEY = "test-key";
     process.env.OPENAI_MODEL = "gpt-6-luna";
 
-    expect(createModelProvider()).toBeInstanceOf(RetryingModelProvider);
+    expect(createModelProvider({ fakeResponses: [{ type: "text", text: "ignored" }] })).toBeInstanceOf(
+      RetryingModelProvider,
+    );
   });
 
   it("requires server-side Gemini credentials and model configuration", () => {
@@ -69,6 +80,8 @@ describe("createModelProvider", () => {
     process.env.GEMINI_API_KEY = "test-key";
     process.env.GEMINI_MODEL = "gemini-test-model";
 
-    expect(createModelProvider()).toBeInstanceOf(RetryingModelProvider);
+    expect(createModelProvider({ fakeResponses: [{ type: "text", text: "ignored" }] })).toBeInstanceOf(
+      RetryingModelProvider,
+    );
   });
 });
