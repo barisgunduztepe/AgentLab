@@ -7,12 +7,13 @@ Bu belge, AgentLab'in mevcut repository durumunu ve onaylanmış geliştirme sı
 - v0.1 Single Agent Foundation tamamlandı.
 - v0.2 Tool System tamamlandı; v0.2.1–v0.2.5 exit checkpoint'i geçti.
 - v0.2.4 Tool Observability tamamlandı.
-- API route provider'ı `AGENTLAB_MODEL_PROVIDER=fake|openai` ayarından açıkça seçiyor; eksik/geçersiz ayarda fallback yapmıyor.
-- `OpenAIModelProvider` Responses API ile calculator function calling yapıyor; `GroqModelProvider` bu milestone'da kullanılmıyor.
+- API route provider'ı `AGENTLAB_MODEL_PROVIDER=fake|openai|gemini` ayarından açıkça seçiyor; eksik/geçersiz ayarda fallback yapmıyor.
+- `OpenAIModelProvider` Responses API, `GeminiModelProvider` Gemini Interactions API ile yalnızca calculator function calling yapıyor; `GroqModelProvider` bu milestone'larda kullanılmıyor.
 - v0.3.1 Structured Tool-Call Contract tamamlandı.
 - v0.3.2 Bounded Tool Execution Loop tamamlandı.
 - v0.3.3 OpenAI tool calling implementasyonu ve otomatik doğrulamaları tamamlandı; hesapta $0.00 API kredisi olduğundan gerçek API smoke testi yapılmadı ve canlı davranış doğrulanmadı.
-- Sonraki planlı milestone: **v0.4.1 Sabit deney senaryoları** (v0.3.3 smoke testinden sonra).
+- v0.3.4 Gemini provider implementasyonu tamamlandı; SDK davranışı mock testlerle doğrulandı. Manuel REST kontrolünde toolsuz Interactions isteği başarılı oldu; calculator tool şemalı istekler geçici yüksek talep kaynaklı `503 service_unavailable` hatası verdi. AgentLab'in canlı SDK tool-calling davranışı başarılı smoke test ile henüz doğrulanmadı.
+- Sonraki planlı milestone: **v0.4.1 Sabit deney senaryoları** (Gemini Free Tier manuel smoke testinden sonra).
 
 ## v0.1 — Single Agent Foundation
 
@@ -98,6 +99,12 @@ Event payload'ı varsayılan olarak tool input/output içeriklerini taşımaz. T
 Calculator function schema'sı bilinçli olarak OpenAI provider içinde tanımlıdır; ikinci tool eklenirken schema'yı `Tool` sözleşmesine taşıma kararı yeniden değerlendirilecektir. FakeModelProvider testlerde korunur. SDK testleri mock'tur ve otomatik testler gerçek API ağına çıkmaz. UI, multi-provider desteği ve token streaming bu kapsamda değildir.
 
 **Doğrulama:** 7 test dosyası / 43 test başarılı; lint uyarısız; production build ve `git diff --check` başarılı. Hesapta $0.00 API kredisi olduğundan gerçek API smoke testi yapılmadı; bu nedenle canlı OpenAI davranışı doğrulanmış değildir.
+
+### 🟡 v0.3.4 Gemini Free Tier Provider
+
+**Uygulama:** Google'ın resmi `@google/genai` SDK'sı Interactions API üzerinden calculator native function calling için kullanılır. Provider `GEMINI_API_KEY` ve `GEMINI_MODEL` değerlerini server-side environment'tan okur. Seçim `AGENTLAB_MODEL_PROVIDER=gemini` ile açıktır; sessiz fallback yoktur. Gemini function-call ID, provider içinde saklanan interaction ID ve `function_result.call_id` ile eşleştirilir. Ortak `ModelProvider` sözleşmesi ve `SingleAgent` değişmeden kalır. Tek yanıt başına bir tool call ve en fazla üç tool execution sınırları korunur.
+
+**Doğrulama durumu:** Provider SDK davranışı mock testlerle kapsanmıştır; otomatik testler ağa çıkmaz. Manuel REST kontrolünde toolsuz istek başarılı, calculator tool şemalı istek ise geçici `503 service_unavailable` kapasite hatası döndürmüştür. AgentLab'in canlı SDK tool-calling davranışı henüz başarılı smoke test ile doğrulanmamıştır. Retry/backoff bu milestone'a dahil değildir. Calculator schema'sı bu milestone için provider içinde tutulur; yeni tool eklenirken `Tool` sözleşmesine taşıma yeniden değerlendirilecektir.
 
 ## v0.4 — Deterministic Scenarios & Simple Evaluation
 

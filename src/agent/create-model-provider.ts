@@ -1,4 +1,5 @@
 import { FakeModelProvider } from "./providers/fake-model-provider";
+import { GeminiModelProvider } from "./providers/gemini-model-provider";
 import { OpenAIModelProvider } from "./providers/openai-model-provider";
 import type { ModelProvider } from "./model-provider";
 
@@ -8,7 +9,9 @@ export function createModelProvider(): ModelProvider {
       return new FakeModelProvider();
     case "openai":
       return new OpenAIModelProvider();
+    case "gemini":
+      return new GeminiModelProvider();
     default:
-      throw new Error("AGENTLAB_MODEL_PROVIDER must be set to 'fake' or 'openai'.");
+      throw new Error("AGENTLAB_MODEL_PROVIDER must be set to 'fake', 'openai', or 'gemini'.");
   }
 }

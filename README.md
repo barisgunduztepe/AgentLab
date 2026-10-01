@@ -55,7 +55,7 @@ Bunlar sonraki sürümlerde değerlendirilecek.
 
 Proje küçük, test edilebilir ve geri alınabilir milestone'larla geliştirilecek. Her adımda önce kavram öğrenilecek; ardından küçük implementasyon, test, canlı doğrulama ve Git checkpoint'i gelecek.
 
-**Mevcut durum:** v0.3.3 OpenAI tool calling implementasyonu ve otomatik doğrulamaları tamamlandı. Hesapta $0.00 API kredisi bulunduğu için gerçek API smoke testi yapılmadı; canlı OpenAI davranışı doğrulanmadı.
+**Mevcut durum:** v0.3.4 Gemini provider implementasyonu ve mock tabanlı otomatik doğrulaması tamamlandı. Manuel REST kontrolünde toolsuz Interactions isteği başarılı oldu; calculator tool şemasıyla yapılan istekler geçici `503 service_unavailable` kapasite hatası aldı. Bu nedenle AgentLab üzerinden canlı tool-calling davranışı henüz doğrulanmamıştır. v0.3.3 OpenAI canlı davranışı da gerçek API smoke testi yapılmadığı için doğrulanmamıştır.
 
 ## v0.3.3 — OpenAI Responses API
 
@@ -66,5 +66,11 @@ OpenAI modu için server-side `OPENAI_API_KEY` ve `OPENAI_MODEL` ortam değişke
 Gerçek API smoke testi, API kredisi olduğunda manuel yapılabilir: `.env.local` içinde `AGENTLAB_MODEL_PROVIDER=openai`, `OPENAI_API_KEY` ve `OPENAI_MODEL` ayarla, uygulamayı başlat ve “Use the calculator to calculate 12 * 8 and explain the result.” görevini gönder. Otomatik testler bu API'yi çağırmaz. Mevcut canlı davranış doğrulanmamıştır.
 
 v0.3.3'te OpenAI function schema'sı yalnızca mevcut calculator tool için provider içinde tanımlıdır. İkinci tool eklenirse schema'yı `Tool` sözleşmesine taşıma kararı yeniden değerlendirilecektir. Tool input/output lifecycle event'lerine eklenmez.
+
+## v0.3.4 — Gemini Interactions API
+
+Provider seçimi `AGENTLAB_MODEL_PROVIDER=fake|openai|gemini` ile açıkça yapılır; eksik veya geçersiz değerlerde fallback yoktur. Gemini modu server-side `GEMINI_API_KEY` ve `GEMINI_MODEL` gerektirir. `.env.example` yalnızca boş placeholder'ları içerir; gerçek anahtar `.env.local` veya sunucu ortam değişkeninde tutulmalıdır. Örnek model adı `gemini-3.8-flash`'tir; model adı kodda sabitlenmez. Model erişimi ve Free Tier uygunluğu manuel smoke testinden hemen önce tekrar kontrol edilmelidir.
+
+Gemini provider resmi `@google/genai` SDK'sının Interactions API'sini ve native function calling akışını kullanır. Yalnızca calculator function schema'sı provider içinde tanımlanır. Function call ID, ortak `callId` olarak korunur; interaction ve continuation state provider içinde tutulur. Tek response başına bir function call kabul edilir ve mevcut üç tool execution sınırı korunur. Tool input/output lifecycle event'lerine eklenmez. SDK davranışı mock testlerle doğrulanmıştır. Manuel REST kontrolünde toolsuz istek tamamlanmış, calculator tool içeren istekler geçici yüksek talep kaynaklı `503 service_unavailable` hatası almıştır. AgentLab'in canlı SDK tool-calling akışı başarılı bir smoke test ile henüz doğrulanmamıştır; retry/backoff bu milestone'a dahil değildir.
 
 Sürümlerin ve milestone'ların ayrıntılı durumu için [ROADMAP.md](ROADMAP.md) dosyasına bakın.
