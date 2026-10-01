@@ -7,6 +7,20 @@ export interface HandoffPayload {
   context: string;
 }
 
+export type AgentId = "analyst" | "finalizer";
+
+export type AgentLifecycleSignal =
+  | { type: "agent.lifecycle"; agentId: AgentId; phase: "started" }
+  | { type: "agent.lifecycle"; agentId: AgentId; phase: "completed"; output: string }
+  | { type: "agent.lifecycle"; agentId: AgentId; phase: "failed"; failureCode: "agent_execution_failed" }
+  | { type: "handoff.completed"; fromAgentId: "analyst"; toAgentId: "finalizer" }
+  | {
+      type: "handoff.failed";
+      fromAgentId: "analyst";
+      toAgentId: "finalizer";
+      failureCode: "invalid_handoff";
+    };
+
 export class TwoAgentHandoffRunner {
   constructor(
     private readonly analyst: SingleAgent,
@@ -15,27 +29,75 @@ export class TwoAgentHandoffRunner {
 
   async run(
     task: string,
-    onToolLifecycle?: (signal: ToolLifecycleSignal) => void,
+    onToolLifecycle?: (signal: ToolLifecycleSignal & { agentId?: AgentId }) => void,
+    onLifecycle?: (signal: AgentLifecycleSignal) => void,
   ): Promise<Extract<ModelResponse, { type: "text" }>> {
     if (task.trim().length === 0) {
       throw new Error("Agent handoff could not be completed.");
     }
 
+    onLifecycle?.({ type: "agent.lifecycle", agentId: "analyst", phase: "started" });
+
     let analystResponse: Extract<ModelResponse, { type: "text" }>;
     try {
-      analystResponse = await this.analyst.run(buildAnalystAssignment(task), onToolLifecycle);
+      analystResponse = await this.analyst.run(
+        buildAnalystAssignment(task),
+        (signal) => onToolLifecycle?.({ ...signal, agentId: "analyst" }),
+      );
     } catch {
+      onLifecycle?.({
+        type: "agent.lifecycle",
+        agentId: "analyst",
+        phase: "failed",
+        failureCode: "agent_execution_failed",
+      });
       throw new Error("Agent handoff could not be completed.");
     }
+
+    onLifecycle?.({
+      type: "agent.lifecycle",
+      agentId: "analyst",
+      phase: "completed",
+      output: analystResponse.text,
+    });
 
     const handoff = createHandoffPayload(task, analystResponse.text);
     if (!handoff) {
+      onLifecycle?.({
+        type: "handoff.failed",
+        fromAgentId: "analyst",
+        toAgentId: "finalizer",
+        failureCode: "invalid_handoff",
+      });
       throw new Error("Agent handoff could not be completed.");
     }
 
+    onLifecycle?.({
+      type: "handoff.completed",
+      fromAgentId: "analyst",
+      toAgentId: "finalizer",
+    });
+    onLifecycle?.({ type: "agent.lifecycle", agentId: "finalizer", phase: "started" });
+
     try {
-      return await this.finalizer.run(buildFinalizerAssignment(handoff), onToolLifecycle);
+      const finalizerResponse = await this.finalizer.run(
+        buildFinalizerAssignment(handoff),
+        (signal) => onToolLifecycle?.({ ...signal, agentId: "finalizer" }),
+      );
+      onLifecycle?.({
+        type: "agent.lifecycle",
+        agentId: "finalizer",
+        phase: "completed",
+        output: finalizerResponse.text,
+      });
+      return finalizerResponse;
     } catch {
+      onLifecycle?.({
+        type: "agent.lifecycle",
+        agentId: "finalizer",
+        phase: "failed",
+        failureCode: "agent_execution_failed",
+      });
       throw new Error("Agent handoff could not be completed.");
     }
   }

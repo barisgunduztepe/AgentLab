@@ -180,9 +180,27 @@ describe("POST /api/experiments fixed scenarios", () => {
     expect(events.map((event) => event.type)).toEqual([
       "experiment.started",
       "agent.started",
+      "agent.lifecycle",
+      "agent.lifecycle",
+      "handoff.completed",
+      "agent.lifecycle",
+      "agent.lifecycle",
       "agent.completed",
       "experiment.completed",
     ]);
+    expect(events[2]).toMatchObject({ type: "agent.lifecycle", agentId: "analyst", phase: "started" });
+    expect(events[3]).toMatchObject({ type: "agent.lifecycle", agentId: "analyst", phase: "completed" });
+    expect(events[3]).toMatchObject({
+      output: "A thermostat measures room temperature, compares it with the set point, and activates heating or cooling to reduce the difference.",
+    });
+    expect(events[4]).toMatchObject({ type: "handoff.completed", fromAgentId: "analyst", toAgentId: "finalizer" });
+    expect(events[5]).toMatchObject({ type: "agent.lifecycle", agentId: "finalizer", phase: "started" });
+    expect(events[6]).toMatchObject({
+      type: "agent.lifecycle",
+      agentId: "finalizer",
+      phase: "completed",
+      output: "A thermostat keeps a room near its target by measuring the air temperature and comparing it with the set point. When the room is too cold or hot, it turns heating or cooling on, then switches it off as the target is reached.",
+    });
     expect(events.find((event) => event.type === "agent.completed")).toMatchObject({
       output: {
         type: "text",

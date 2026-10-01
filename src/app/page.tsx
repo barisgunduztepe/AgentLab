@@ -19,6 +19,27 @@ function statusLabel(status: UiStatus): string {
   }
 }
 
+function eventLabel(event: ExperimentEvent): string {
+  if (event.type === "agent.lifecycle") {
+    const agentName = event.agentId === "analyst" ? "Analyst" : "Finalizer";
+    return `${agentName} ${event.phase}`;
+  }
+
+  if (event.type === "handoff.completed") {
+    return "Handoff completed — Analyst → Finalizer";
+  }
+
+  if (event.type === "handoff.failed") {
+    return `Handoff failed — ${event.failureCode}`;
+  }
+
+  if ("agentId" in event && event.agentId) {
+    return `${event.type} — ${event.agentId === "analyst" ? "Analyst" : "Finalizer"} · ${event.toolName}`;
+  }
+
+  return `${event.type}${"toolName" in event ? ` — ${event.toolName}` : ""}`;
+}
+
 export default function Home() {
   const [task, setTask] = useState("");
   const [selectedScenarioId, setSelectedScenarioId] = useState("");
@@ -174,7 +195,7 @@ export default function Home() {
       <header style={{ marginBottom: 28 }}>
         <h1 style={{ margin: "0 0 8px", fontSize: 32 }}>AgentLab</h1>
         <p style={{ margin: 0, color: "#536078" }}>
-          Run a single agent experiment and observe its events.
+          Run an agent experiment and observe its events.
         </p>
       </header>
 
@@ -302,9 +323,16 @@ export default function Home() {
             {events.map((experimentEvent, index) => (
               <li key={`${experimentEvent.experimentId}-${index}`} style={{ marginBottom: 8 }}>
                 <code>
-                  {experimentEvent.type}
-                  {"toolName" in experimentEvent && ` — ${experimentEvent.toolName}`}
+                  {eventLabel(experimentEvent)}
                 </code>
+                {experimentEvent.type === "agent.lifecycle" && experimentEvent.phase === "completed" && (
+                  <p style={{ margin: "4px 0 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                    {experimentEvent.output}
+                  </p>
+                )}
+                {experimentEvent.type === "agent.lifecycle" && experimentEvent.phase === "failed" && (
+                  <p style={{ margin: "4px 0 0", color: "#8f2424" }}>{experimentEvent.failureCode}</p>
+                )}
                 <span style={{ marginLeft: 10, color: "#6b7585" }}>
                   {new Date(experimentEvent.occurredAt).toLocaleTimeString()}
                 </span>

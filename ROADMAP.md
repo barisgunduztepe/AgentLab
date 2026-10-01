@@ -151,9 +151,11 @@ Doğrudan metin senaryosu tamamlanmış, boş olmayan metin ve sıfır tool life
 
 **Uygulama:** Sabit `analyst-finalizer-handoff` senaryosu, coordinator tarafından Analyst'ten Finalizer'a tam bir kez aktarılır. Analyst özgün görev için kısa not üretir; Finalizer özgün görevi ve bu notları alıp son yanıtı döndürür. İki ayrı provider instance'ı kullanılır; Fake fixture'ları server-side ve deterministiktir. Var olan aggregate experiment event akışı korunur. Modelin handoff seçmesi, geri yönlendirme veya genel multi-agent orchestration yoktur. v0.5.2 daha ayrıntılı agent katkısı, handoff ve hata gözlemlenebilirliğini kapsar.
 
-### ⬜ v0.5.2 Multi-agent lifecycle ve event akışı
+### ✅ v0.5.2 Multi-agent lifecycle ve event akışı
 
 **Amaç:** Agent katkılarını, handoff'u ve hataları gözlemlenebilir kılmak.
+
+**Uygulama:** Yalnızca sabit Analyst → Finalizer handoff akışında `agent.lifecycle` olayları agent kimliği, phase ve tamamlanan agent'ın normal metin çıktısını gösterir. `handoff.completed` / `handoff.failed` sabit kaynak-hedef ve güvenli hata kodunu taşır. Tool lifecycle olaylarında handoff akışı için `agentId` bulunur; tek-agent olay biçimi değişmez. Mevcut aggregate agent/experiment olayları korunur, handoff senaryosu değerlendirilmez ve hata mesajları genel/güvenli kalır. Olaylar yalnızca yürütmeyi betimler; dinamik yönlendirme veya swarm eklenmez.
 
 İlk hedef swarm değildir.
 

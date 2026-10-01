@@ -1,10 +1,19 @@
 import { randomUUID } from "node:crypto";
-import type { SingleAgent } from "../agent/single-agent";
+import type { ToolLifecycleSignal } from "../agent/single-agent";
+import type { AgentId, AgentLifecycleSignal } from "../agent/two-agent-handoff-runner";
 import type { Experiment, ExperimentEvent, ExperimentOutput } from "./types";
+
+type ExperimentRunner = {
+  run(
+    task: string,
+    onToolLifecycle?: (signal: ToolLifecycleSignal & { agentId?: AgentId }) => void,
+    onLifecycle?: (signal: AgentLifecycleSignal) => void,
+  ): Promise<ExperimentOutput>;
+};
 
 export async function runExperiment(
   task: string,
-  agent: Pick<SingleAgent, "run">,
+  agent: ExperimentRunner,
   onEvent: (event: ExperimentEvent) => void,
 ): Promise<Experiment> {
   const id = randomUUID();
@@ -25,13 +34,23 @@ export async function runExperiment(
   let output: ExperimentOutput;
 
   try {
-    const response = await agent.run(task, (signal) => {
-      onEvent({
-        experimentId: id,
-        occurredAt: new Date().toISOString(),
-        ...signal,
-      });
-    });
+    const response = await agent.run(
+      task,
+      (signal) => {
+        onEvent({
+          experimentId: id,
+          occurredAt: new Date().toISOString(),
+          ...signal,
+        });
+      },
+      (signal) => {
+        onEvent({
+          experimentId: id,
+          occurredAt: new Date().toISOString(),
+          ...signal,
+        });
+      },
+    );
     output = response;
   } catch {
     const endedAt = new Date().toISOString();

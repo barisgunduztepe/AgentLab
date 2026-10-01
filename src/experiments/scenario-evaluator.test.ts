@@ -123,4 +123,15 @@ describe("evaluateScenario", () => {
   it("does not evaluate unrecognized scenario IDs", () => {
     expect(evaluateScenario("unknown", experiment("completed", "Done."), [])).toBeUndefined();
   });
+
+  it("ignores scoped agent and handoff events when evaluating existing single-agent criteria", () => {
+    const events: ExperimentEvent[] = [
+      { experimentId: "experiment-1", occurredAt: "2026-10-01T00:00:00.000Z", type: "agent.lifecycle", agentId: "analyst", phase: "started" },
+      { experimentId: "experiment-1", occurredAt: "2026-10-01T00:00:01.000Z", type: "agent.lifecycle", agentId: "analyst", phase: "completed", output: "Notes." },
+      { experimentId: "experiment-1", occurredAt: "2026-10-01T00:00:02.000Z", type: "handoff.completed", fromAgentId: "analyst", toAgentId: "finalizer" },
+      ...toolEvents("tool.started", "tool.completed"),
+    ];
+
+    expect(evaluateScenario("calculator-once", experiment("completed", "Result: 96."), events)?.passed).toBe(true);
+  });
 });

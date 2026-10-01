@@ -2,12 +2,218 @@ import { describe, expect, it, vi } from "vitest";
 import type { ModelProvider } from "../agent/model-provider";
 import { FakeModelProvider } from "../agent/providers/fake-model-provider";
 import { SingleAgent } from "../agent/single-agent";
+import { TwoAgentHandoffRunner } from "../agent/two-agent-handoff-runner";
 import { CalculatorTool } from "../tools/calculator-tool";
 import type { Tool } from "../tools/tool";
 import { runExperiment } from "./run-experiment";
 import type { ExperimentEvent } from "./types";
 
 describe("runExperiment", () => {
+  it("emits the scoped Analyst-to-Finalizer lifecycle in order while retaining aggregate events", async () => {
+    const events: ExperimentEvent[] = [];
+    const analystText = "Thermostats compare measured temperature with a target.";
+    const finalizerText = "A thermostat compares room temperature with its target and controls heating or cooling.";
+    const agent = new TwoAgentHandoffRunner(
+      new SingleAgent(new FakeModelProvider([{ type: "text", text: analystText }])),
+      new SingleAgent(new FakeModelProvider([{ type: "text", text: finalizerText }])),
+    );
+
+    const experiment = await runExperiment("Explain a thermostat.", agent, (event) => events.push(event));
+
+    expect(experiment.status).toBe("completed");
+    expect(experiment.output).toEqual({ type: "text", text: finalizerText });
+    expect(events.map((event) => event.type)).toEqual([
+      "experiment.started",
+      "agent.started",
+      "agent.lifecycle",
+      "agent.lifecycle",
+      "handoff.completed",
+      "agent.lifecycle",
+      "agent.lifecycle",
+      "agent.completed",
+      "experiment.completed",
+    ]);
+    expect(events[2]).toMatchObject({ type: "agent.lifecycle", agentId: "analyst", phase: "started" });
+    expect(events[3]).toMatchObject({ type: "agent.lifecycle", agentId: "analyst", phase: "completed", output: analystText });
+    expect(events[4]).toMatchObject({ type: "handoff.completed", fromAgentId: "analyst", toAgentId: "finalizer" });
+    expect(events[5]).toMatchObject({ type: "agent.lifecycle", agentId: "finalizer", phase: "started" });
+    expect(events[6]).toMatchObject({ type: "agent.lifecycle", agentId: "finalizer", phase: "completed", output: finalizerText });
+    expect(events[7]).toMatchObject({ type: "agent.completed", output: { text: finalizerText } });
+    expect(events.every((event) => event.experimentId === experiment.id)).toBe(true);
+  });
+
+  it("reports Analyst failure safely before experiment.failed without handoff or Finalizer start", async () => {
+    const events: ExperimentEvent[] = [];
+    const rawError = "private provider error and continuation identifier";
+    const failingAnalyst = new SingleAgent({
+      async generateResponse() { throw new Error(rawError); },
+      async continueAfterToolCall() { throw new Error(rawError); },
+    });
+    const runner = new TwoAgentHandoffRunner(failingAnalyst, new SingleAgent(new FakeModelProvider()));
+
+    const experiment = await runExperiment("Explain a thermostat.", runner, (event) => events.push(event));
+
+    expect(experiment.status).toBe("failed");
+    expect(events.map((event) => event.type)).toEqual([
+      "experiment.started",
+      "agent.started",
+      "agent.lifecycle",
+      "agent.lifecycle",
+      "experiment.failed",
+    ]);
+    expect(events[3]).toMatchObject({
+      type: "agent.lifecycle",
+      agentId: "analyst",
+      phase: "failed",
+      failureCode: "agent_execution_failed",
+    });
+    expect(events.some((event) => event.type.startsWith("handoff."))).toBe(false);
+    expect(events.some((event) => event.type === "agent.lifecycle" && event.agentId === "finalizer")).toBe(false);
+    expect(JSON.stringify(events)).not.toContain(rawError);
+  });
+
+  it("reports empty Analyst output as completed followed by a safe handoff failure", async () => {
+    const events: ExperimentEvent[] = [];
+    const runner = new TwoAgentHandoffRunner(
+      new SingleAgent(new FakeModelProvider([{ type: "text", text: " \n " }])),
+      new SingleAgent(new FakeModelProvider([{ type: "text", text: "Must not run." }])),
+    );
+
+    const experiment = await runExperiment("Explain a thermostat.", runner, (event) => events.push(event));
+
+    expect(experiment.status).toBe("failed");
+    expect(events.map((event) => event.type)).toEqual([
+      "experiment.started",
+      "agent.started",
+      "agent.lifecycle",
+      "agent.lifecycle",
+      "handoff.failed",
+      "experiment.failed",
+    ]);
+    expect(events[3]).toMatchObject({ type: "agent.lifecycle", agentId: "analyst", phase: "completed", output: " \n " });
+    expect(events[4]).toMatchObject({
+      type: "handoff.failed",
+      fromAgentId: "analyst",
+      toAgentId: "finalizer",
+      failureCode: "invalid_handoff",
+    });
+    expect(events.some((event) => event.type === "agent.lifecycle" && event.agentId === "finalizer")).toBe(false);
+  });
+
+  it("reports Finalizer failure after handoff and before experiment.failed", async () => {
+    const events: ExperimentEvent[] = [];
+    const rawError = "private finalizer SDK details";
+    const runner = new TwoAgentHandoffRunner(
+      new SingleAgent(new FakeModelProvider([{ type: "text", text: "Useful Analyst notes." }])),
+      new SingleAgent({
+        async generateResponse() { throw new Error(rawError); },
+        async continueAfterToolCall() { throw new Error(rawError); },
+      }),
+    );
+
+    const experiment = await runExperiment("Explain a thermostat.", runner, (event) => events.push(event));
+
+    expect(experiment.status).toBe("failed");
+    expect(events.map((event) => event.type)).toEqual([
+      "experiment.started",
+      "agent.started",
+      "agent.lifecycle",
+      "agent.lifecycle",
+      "handoff.completed",
+      "agent.lifecycle",
+      "agent.lifecycle",
+      "experiment.failed",
+    ]);
+    expect(events[6]).toMatchObject({
+      type: "agent.lifecycle",
+      agentId: "finalizer",
+      phase: "failed",
+      failureCode: "agent_execution_failed",
+    });
+    expect(JSON.stringify(events)).not.toContain(rawError);
+  });
+
+  it("attributes each agent's tool events without exposing tool data or call IDs", async () => {
+    const events: ExperimentEvent[] = [];
+    const privateInputA = "private analyst tool input";
+    const privateOutputA = "private analyst tool output";
+    const privateInputB = "private finalizer tool input";
+    const privateOutputB = "private finalizer tool output";
+    const privateCallIdA = "private-analyst-call-id";
+    const privateCallIdB = "private-finalizer-call-id";
+    const makeTool = (name: string, result: string): Tool => ({
+      name,
+      description: "Test-only private output tool.",
+      async execute() { return result; },
+    });
+    const analyst = new SingleAgent(new FakeModelProvider([
+      { type: "tool_call", callId: privateCallIdA, toolName: "analyst-private-tool", input: privateInputA },
+      { type: "text", text: "Analyst contribution." },
+    ]), [makeTool("analyst-private-tool", privateOutputA)]);
+    const finalizer = new SingleAgent(new FakeModelProvider([
+      { type: "tool_call", callId: privateCallIdB, toolName: "finalizer-private-tool", input: privateInputB },
+      { type: "text", text: "Finalizer contribution." },
+    ]), [makeTool("finalizer-private-tool", privateOutputB)]);
+
+    await runExperiment("Complete this multi-step task.", new TwoAgentHandoffRunner(analyst, finalizer), (event) => events.push(event));
+
+    expect(events.map((event) => event.type)).toEqual([
+      "experiment.started",
+      "agent.started",
+      "agent.lifecycle",
+      "tool.started",
+      "tool.completed",
+      "agent.lifecycle",
+      "handoff.completed",
+      "agent.lifecycle",
+      "tool.started",
+      "tool.completed",
+      "agent.lifecycle",
+      "agent.completed",
+      "experiment.completed",
+    ]);
+    expect(events.filter((event) => event.type === "tool.started" || event.type === "tool.completed" || event.type === "tool.failed")
+      .map((event) => [event.type, "agentId" in event ? event.agentId : undefined])).toEqual([
+      ["tool.started", "analyst"],
+      ["tool.completed", "analyst"],
+      ["tool.started", "finalizer"],
+      ["tool.completed", "finalizer"],
+    ]);
+    const serialized = JSON.stringify(events);
+    for (const privateValue of [privateInputA, privateOutputA, privateInputB, privateOutputB, privateCallIdA, privateCallIdB]) {
+      expect(serialized).not.toContain(privateValue);
+    }
+  });
+
+  it("does not fabricate tool events when an agent requests an unsupported tool", async () => {
+    const events: ExperimentEvent[] = [];
+    const rawToolName = "unsupported-private-tool";
+    const secretInput = "secret unsupported arguments";
+    const runner = new TwoAgentHandoffRunner(
+      new SingleAgent(new FakeModelProvider([
+        { type: "tool_call", callId: "private-call-id", toolName: rawToolName, input: secretInput },
+      ]), [new CalculatorTool()]),
+      new SingleAgent(new FakeModelProvider([{ type: "text", text: "Must not run." }])),
+    );
+
+    const experiment = await runExperiment("Try an unsupported operation.", runner, (event) => events.push(event));
+
+    expect(experiment.status).toBe("failed");
+    expect(events.map((event) => event.type)).toEqual([
+      "experiment.started",
+      "agent.started",
+      "agent.lifecycle",
+      "agent.lifecycle",
+      "experiment.failed",
+    ]);
+    expect(events[3]).toMatchObject({ type: "agent.lifecycle", agentId: "analyst", phase: "failed" });
+    expect(events.some((event) => event.type.startsWith("tool."))).toBe(false);
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain(rawToolName);
+    expect(serialized).not.toContain(secretInput);
+    expect(serialized).not.toContain("private-call-id");
+  });
+
   it("emits tool events between agent start and completion for calculator tasks", async () => {
     const events: ExperimentEvent[] = [];
     const agent = new SingleAgent(
@@ -34,6 +240,7 @@ describe("runExperiment", () => {
     expect(events[3]).toMatchObject({ type: "tool.completed", toolName: "calculator" });
     expect(events.every((event) => event.experimentId === experiment.id)).toBe(true);
     expect(events.some((event) => "input" in event || "toolOutput" in event)).toBe(false);
+    expect(JSON.stringify(events)).not.toContain("agentId");
   });
 
   it("emits safe tool failure events and preserves the failed experiment result", async () => {
