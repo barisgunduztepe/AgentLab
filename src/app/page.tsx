@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { EvaluationResult, ExperimentEvent, ExperimentOutput, ExperimentStatus } from "@/experiments/types";
+import type { ExperimentHistoryRecord, ExperimentHistorySummary } from "@/experiments/experiment-history";
 import { SCENARIOS } from "@/experiments/scenarios";
 
 type UiStatus = ExperimentStatus | "idle";
@@ -40,6 +41,33 @@ function eventLabel(event: ExperimentEvent): string {
   return `${event.type}${"toolName" in event ? ` — ${event.toolName}` : ""}`;
 }
 
+function ExperimentEventList({ events, emptyMessage }: { events: ExperimentEvent[]; emptyMessage: string }) {
+  if (events.length === 0) {
+    return <p style={{ margin: 0, color: "#6b7585" }}>{emptyMessage}</p>;
+  }
+
+  return (
+    <ol aria-live="polite" style={{ margin: 0, paddingLeft: 22 }}>
+      {events.map((experimentEvent, index) => (
+        <li key={`${experimentEvent.experimentId}-${index}`} style={{ marginBottom: 8 }}>
+          <code>{eventLabel(experimentEvent)}</code>
+          {experimentEvent.type === "agent.lifecycle" && experimentEvent.phase === "completed" && (
+            <p style={{ margin: "4px 0 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+              {experimentEvent.output}
+            </p>
+          )}
+          {experimentEvent.type === "agent.lifecycle" && experimentEvent.phase === "failed" && (
+            <p style={{ margin: "4px 0 0", color: "#8f2424" }}>{experimentEvent.failureCode}</p>
+          )}
+          <span style={{ marginLeft: 10, color: "#6b7585" }}>
+            {new Date(experimentEvent.occurredAt).toLocaleTimeString()}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export default function Home() {
   const [task, setTask] = useState("");
   const [selectedScenarioId, setSelectedScenarioId] = useState("");
@@ -51,6 +79,70 @@ export default function Home() {
   const [output, setOutput] = useState<ExperimentOutput | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
+  const [historySummaries, setHistorySummaries] = useState<ExperimentHistorySummary[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+  const [historicalExperiment, setHistoricalExperiment] = useState<ExperimentHistoryRecord | null>(null);
+  const [historicalLoading, setHistoricalLoading] = useState(false);
+  const [historicalError, setHistoricalError] = useState<string | null>(null);
+
+  const refreshHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const response = await fetch("/api/experiments/history");
+      if (!response.ok) throw new Error();
+      const body = await response.json() as { experiments: ExperimentHistorySummary[] };
+      setHistorySummaries(body.experiments);
+    } catch {
+      setHistoryError("Experiment history is unavailable.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/experiments/history")
+      .then(async (response) => {
+        if (!response.ok) throw new Error();
+        return await response.json() as { experiments: ExperimentHistorySummary[] };
+      })
+      .then((body) => {
+        if (active) setHistorySummaries(body.experiments);
+      })
+      .catch(() => {
+        if (active) setHistoryError("Experiment history is unavailable.");
+      })
+      .finally(() => {
+        if (active) setHistoryLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedHistoryId) return;
+
+    const controller = new AbortController();
+
+    void fetch(`/api/experiments/history/${encodeURIComponent(selectedHistoryId)}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error();
+        return await response.json() as ExperimentHistoryRecord;
+      })
+      .then((record) => {
+        if (!controller.signal.aborted) setHistoricalExperiment(record);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setHistoricalError("Experiment details are unavailable.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setHistoricalLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [selectedHistoryId]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -167,6 +259,7 @@ export default function Home() {
         }
       } finally {
         reader.releaseLock();
+        await refreshHistory();
       }
 
       if (!receivedFinalEvent) {
@@ -316,30 +409,7 @@ export default function Home() {
         }}
       >
         <h2 style={{ margin: "0 0 12px", fontSize: 20 }}>Observable events</h2>
-        {events.length === 0 ? (
-          <p style={{ margin: 0, color: "#6b7585" }}>Events will appear here when an experiment starts.</p>
-        ) : (
-          <ol aria-live="polite" style={{ margin: 0, paddingLeft: 22 }}>
-            {events.map((experimentEvent, index) => (
-              <li key={`${experimentEvent.experimentId}-${index}`} style={{ marginBottom: 8 }}>
-                <code>
-                  {eventLabel(experimentEvent)}
-                </code>
-                {experimentEvent.type === "agent.lifecycle" && experimentEvent.phase === "completed" && (
-                  <p style={{ margin: "4px 0 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-                    {experimentEvent.output}
-                  </p>
-                )}
-                {experimentEvent.type === "agent.lifecycle" && experimentEvent.phase === "failed" && (
-                  <p style={{ margin: "4px 0 0", color: "#8f2424" }}>{experimentEvent.failureCode}</p>
-                )}
-                <span style={{ marginLeft: 10, color: "#6b7585" }}>
-                  {new Date(experimentEvent.occurredAt).toLocaleTimeString()}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
+        <ExperimentEventList events={events} emptyMessage="Events will appear here when an experiment starts." />
       </section>
 
       {evaluation && (
@@ -404,6 +474,101 @@ export default function Home() {
           >
             {output.text}
           </pre>
+        )}
+      </section>
+
+      <section
+        style={{
+          marginTop: 20,
+          padding: 20,
+          border: "1px solid #d7dce5",
+          borderRadius: 8,
+          background: "#fff",
+        }}
+      >
+        <h2 style={{ margin: "0 0 12px", fontSize: 20 }}>Experiment history</h2>
+        {historyLoading && historySummaries.length === 0 ? (
+          <p>Loading history…</p>
+        ) : historyError ? (
+          <p role="alert" style={{ color: "#8f2424" }}>{historyError}</p>
+        ) : historySummaries.length === 0 ? (
+          <p style={{ color: "#6b7585" }}>No saved experiments yet.</p>
+        ) : (
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {historySummaries.map((summary) => {
+              const scenario = SCENARIOS.find((item) => item.id === summary.scenarioId);
+              return (
+                <li key={summary.id} style={{ marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedHistoryId !== summary.id) {
+                        setSelectedHistoryId(summary.id);
+                        setHistoricalExperiment(null);
+                        setHistoricalError(null);
+                        setHistoricalLoading(true);
+                      }
+                    }}
+                    aria-pressed={selectedHistoryId === summary.id}
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      textAlign: "left",
+                      border: "1px solid #d7dce5",
+                      borderRadius: 6,
+                      background: selectedHistoryId === summary.id ? "#f1f5ff" : "#fff",
+                      color: "inherit",
+                      font: "inherit",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <strong>{scenario ? scenario.title : summary.scenarioId ?? "Custom task"}</strong>
+                    <span> · {summary.status} · {new Date(summary.endedAt).toLocaleString()}</span>
+                    {summary.evaluation && <span> · {summary.evaluation.passed ? "PASS" : "FAIL"}</span>}
+                    <div style={{ marginTop: 4, color: "#536078", overflowWrap: "anywhere" }}>{summary.task}</div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {historyError && historySummaries.length > 0 && (
+          <p role="alert" style={{ color: "#8f2424" }}>{historyError}</p>
+        )}
+
+        {selectedHistoryId && (
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #d7dce5" }}>
+            {historicalLoading ? (
+              <p>Loading experiment details…</p>
+            ) : historicalError ? (
+              <p role="alert" style={{ color: "#8f2424" }}>{historicalError}</p>
+            ) : historicalExperiment ? (
+              <>
+                <h3 style={{ margin: "0 0 8px", fontSize: 18 }}>
+                  {SCENARIOS.find((item) => item.id === historicalExperiment.scenarioId)?.title ??
+                    historicalExperiment.scenarioId ?? "Custom task"}
+                </h3>
+                <p style={{ margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{historicalExperiment.task}</p>
+                <p style={{ margin: "0 0 8px", color: "#536078" }}>
+                  {historicalExperiment.status} · {new Date(historicalExperiment.startedAt).toLocaleString()} – {new Date(historicalExperiment.endedAt).toLocaleString()} · {historicalExperiment.durationMs} ms
+                </p>
+                {historicalExperiment.output ? (
+                  <pre style={{ margin: "8px 0", padding: 12, borderRadius: 6, background: "#f4f6fa", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit" }}>
+                    {historicalExperiment.output.text}
+                  </pre>
+                ) : historicalExperiment.errorMessage ? (
+                  <p role="alert" style={{ color: "#8f2424" }}>{historicalExperiment.errorMessage}</p>
+                ) : null}
+                {historicalExperiment.evaluation && (
+                  <p style={{ margin: "8px 0", fontWeight: 600 }}>
+                    Scenario evaluation: {historicalExperiment.evaluation.passed ? "PASS" : "FAIL"} — {historicalExperiment.evaluation.reason}
+                  </p>
+                )}
+                <h4 style={{ margin: "16px 0 8px" }}>Stored events</h4>
+                <ExperimentEventList events={historicalExperiment.events} emptyMessage="No events were stored." />
+              </>
+            ) : null}
+          </div>
         )}
       </section>
     </main>

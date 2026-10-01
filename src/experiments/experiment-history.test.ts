@@ -55,6 +55,57 @@ describe("ExperimentHistoryStore", () => {
     await expect(store.readAll()).resolves.toEqual([earlier, later]);
   });
 
+  it("lists only summary fields newest-first without changing canonical storage order", async () => {
+    const older = historyRecord("older", "completed", "2026-10-01T00:00:01.000Z");
+    const newer = historyRecord("newer", "completed", "2026-10-01T00:00:02.000Z");
+    await store.append(older);
+    await store.append(newer);
+
+    const summaries = await store.listSummaries();
+
+    expect(summaries.map(({ id }) => id)).toEqual(["newer", "older"]);
+    expect(summaries[0]).toEqual({
+      id: "newer",
+      task: newer.task,
+      status: "completed",
+      startedAt: newer.startedAt,
+      endedAt: newer.endedAt,
+      durationMs: newer.durationMs,
+    });
+    expect(summaries[0]).not.toHaveProperty("events");
+    await expect(store.readAll()).resolves.toEqual([older, newer]);
+  });
+
+  it("includes optional scenario and evaluation fields in summaries", async () => {
+    const evaluated = {
+      ...historyRecord("evaluated", "completed", "2026-10-01T00:00:01.000Z"),
+      scenarioId: "direct-text",
+      evaluation: { passed: true, reason: "Completed with text." },
+    } satisfies ExperimentHistoryRecord;
+    await store.append(evaluated);
+
+    await expect(store.listSummaries()).resolves.toMatchObject([{
+      id: "evaluated",
+      scenarioId: "direct-text",
+      evaluation: { passed: true, reason: "Completed with text." },
+    }]);
+  });
+
+  it("uses the ID as a deterministic tie-breaker for equal end times", async () => {
+    await store.append(historyRecord("z-run", "completed", "2026-10-01T00:00:01.000Z"));
+    await store.append(historyRecord("a-run", "completed", "2026-10-01T00:00:01.000Z"));
+
+    await expect(store.listSummaries()).resolves.toMatchObject([{ id: "a-run" }, { id: "z-run" }]);
+  });
+
+  it("returns a validated record by ID and undefined for an unknown ID", async () => {
+    const record = historyRecord("selected-run", "completed", "2026-10-01T00:00:01.000Z");
+    await store.append(record);
+
+    await expect(store.getById("selected-run")).resolves.toEqual(record);
+    await expect(store.getById("missing-run")).resolves.toBeUndefined();
+  });
+
   it("does not lose concurrent appends in one store instance", async () => {
     const records = Array.from({ length: 12 }, (_, index) =>
       historyRecord(`run-${index}`, "completed", `2026-10-01T00:00:${String(index).padStart(2, "0")}.000Z`),
@@ -98,6 +149,47 @@ describe("ExperimentHistoryStore", () => {
     await expect(store.append(historyRecord("run-1", "completed", "2026-10-01T00:00:01.000Z")))
       .rejects.toMatchObject({ code });
     await expect(readFile(store.filePath, "utf8")).resolves.toBe(contents);
+  });
+
+  it("rejects evaluation without a scenario ID", async () => {
+    const record = historyRecord("evaluated-run", "completed", "2026-10-01T00:00:01.000Z");
+
+    expect(() => store.append({ ...record, evaluation: { passed: true, reason: "Expected result." } }))
+      .toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
+  });
+
+  it("rejects events whose experiment ID differs from the enclosing record", async () => {
+    const record = historyRecord("outer-run", "completed", "2026-10-01T00:00:01.000Z");
+    const mismatchedEvent = { ...record.events[0], experimentId: "other-run" };
+
+    expect(() => store.append({ ...record, events: [mismatchedEvent] }))
+      .toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
+  });
+
+  it.each([
+    ["evaluation without scenario ID", (record: ExperimentHistoryRecord) => ({
+      ...record,
+      evaluation: { passed: true, reason: "Expected result." },
+    })],
+    ["event with a different experiment ID", (record: ExperimentHistoryRecord) => ({
+      ...record,
+      events: [{ ...record.events[0], experimentId: "other-run" }],
+    })],
+  ])("rejects persisted records with %s when reading", async (_label, corruptRecord) => {
+    const validRecord = historyRecord("stored-run", "completed", "2026-10-01T00:00:01.000Z");
+    await writeFile(store.filePath, JSON.stringify({
+      schemaVersion: 1,
+      records: [corruptRecord(validRecord)],
+    }), "utf8");
+
+    await expect(store.listSummaries()).rejects.toMatchObject({ code: "invalid_snapshot" });
+  });
+
+  it("continues to read valid v1 records written by the v0.6.1 shape", async () => {
+    const record = historyRecord("legacy-run", "completed", "2026-10-01T00:00:01.000Z");
+    await writeFile(store.filePath, JSON.stringify({ schemaVersion: 1, records: [record] }), "utf8");
+
+    await expect(store.getById("legacy-run")).resolves.toEqual(record);
   });
 
   it("stores only approved event fields", async () => {

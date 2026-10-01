@@ -4,10 +4,9 @@ Bu belge, AgentLab'in mevcut repository durumunu ve onaylanmış geliştirme sı
 
 ## Mevcut checkpoint
 
-- v0.1–v0.5.2 tamamlandı; son checkpoint v0.5.2 Multi-Agent Lifecycle Observability'dir.
-- v0.3 gerçek provider'larının canlı davranış doğrulaması sınırlıdır; Gemini tool-enabled isteklerinde daha önce 503 gözlenmiştir. Provider/API incelemesi bu v0.6.1 değişikliğinin dışındadır.
-- v0.6.1 Yerel deney kaydı tamamlandı; v0.6 genel hedefi henüz tamamlanmadı.
-- Sıradaki milestone **v0.6.2 Geçmiş listesi ve deney ayrıntısı**dır.
+- v0.1–v0.6 tamamlandı; son checkpoint v0.6.2 Geçmiş listesi ve deney ayrıntısıdır.
+- v0.3 gerçek provider'larının canlı davranış doğrulaması sınırlıdır; Gemini tool-enabled isteklerinde daha önce 503 gözlenmiştir. v0.6 history çalışması provider davranışını değiştirmemiştir.
+- Sıradaki milestone **v0.7.1 Aynı senaryoda iki agent configuration**'dır.
 
 ## v0.1 — Single Agent Foundation
 
@@ -152,19 +151,23 @@ Doğrudan metin senaryosu tamamlanmış, boş olmayan metin ve sıfır tool life
 
 ## v0.6 — Experiment History
 
+**Durum: ✅ Tamamlandı**
+
 ### ✅ v0.6.1 Yerel deney kaydı
 
 **Amaç:** Şema ve saklama sınırı belirlendikten sonra deney sonuçlarını yerel olarak korumak.
 
 **Uygulama:** `schemaVersion: 1` içeren tek JSON snapshot, Windows'ta `%LOCALAPPDATA%\AgentLab\experiments.json` altında tutulur; repository ve OneDrive çalışma alanı kullanılmaz. API route terminal experiment, varsa scenario/evaluation ve güvenli event akışını bir kez kaydeder. Yazma işlemleri süreç içinde sıraya alınır ve geçici dosya aynı dizinde hazırlanıp hedefin yerine geçirilir. Bozuk veya desteklenmeyen snapshot hata verir ve üzerine yazılmaz. Persistence hatası experiment sonucunu değiştirmez; istemciye yeni event eklenmez ve sunucu yalnızca genel bir uyarı kaydeder.
 
-Bu milestone history UI veya history okuma endpoint'i içermez. v0.6.2, yerel geçmiş listesi ve deney ayrıntısı incelemesini ekleyecektir.
+v0.6.1 kapsamında history UI veya history okuma endpoint'i yoktu; v0.6.2 bunları eklemiştir.
 
-### ⬜ v0.6.2 Geçmiş listesi ve deney ayrıntısı
+### ✅ v0.6.2 Geçmiş listesi ve deney ayrıntısı
 
 **Amaç:** Kaydedilmiş deneyleri bulup sonuç ve event'lerini incelemek.
 
-Geçmiş okuma API'si açılmadan önce local/LAN erişim sınırı ele alınmalıdır; v0.6.1 kimlik doğrulama veya ağ erişim kontrolü eklemez.
+Read-only history API'si özet listesi ve ID ile tek kayıt ayrıntısını sunar. History UI, seçilen kaydın sonuç/evaluation bilgisi ve stored event'lerini gösterir; canlı run state'inden ayrıdır ve yeni run akışı kapandıktan sonra listeyi yeniler. v1 validation, evaluation için scenario ID ve event'ler için enclosing experiment ID eşleşmesini gerektirir.
+
+History okuması local-only'dir: normal `dev`/`start` komutları `127.0.0.1` üzerinde dinler ve history read route'ları yalnızca loopback `Host` kabul eder. `X-Forwarded-For` ve `X-Forwarded-Host` istemci kimliği olarak kullanılmaz. LAN üzerinden history paylaşımı ve authentication bu milestone'da yoktur.
 
 İlk hedef cloud database değildir.
 

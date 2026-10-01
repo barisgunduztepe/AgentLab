@@ -55,7 +55,7 @@ Bunlar sonraki sürümlerde değerlendirilecek.
 
 Proje küçük, test edilebilir ve geri alınabilir milestone'larla geliştirilecek. Her adımda önce kavram öğrenilecek; ardından küçük implementasyon, test, canlı doğrulama ve Git checkpoint'i gelecek.
 
-**Mevcut durum:** v0.5.1 Controlled Two-Agent Handoff, v0.5.2 Multi-Agent Lifecycle Observability ve v0.6.1 Yerel Deney Kaydı tamamlandı. v0.6 genel hedefi henüz tamamlanmadı; sıradaki milestone v0.6.2 geçmiş listesi/ayrıntı görünümüdür. Gemini tool-enabled canlı davranışı doğrulanmamıştır; API/provider incelemesi ertelenmiştir.
+**Mevcut durum:** v0.5.1 Controlled Two-Agent Handoff, v0.5.2 Multi-Agent Lifecycle Observability ve v0.6 Local Experiment History tamamlandı. v0.7 Agent Comparison sıradaki roadmap milestone'udur. Gemini tool-enabled canlı davranışı doğrulanmamıştır; API/provider incelemesi ertelenmiştir.
 
 ## v0.3.3 — OpenAI Responses API
 
@@ -109,4 +109,10 @@ The fixed handoff scenario now adds scoped Analyst/Finalizer lifecycle events, t
 
 The API stores one terminal record per experiment in a versioned (`schemaVersion: 1`) JSON snapshot outside the repository. On Windows the default is `%LOCALAPPDATA%\AgentLab\experiments.json`. Records contain the task, terminal status/timing, final output or the existing safe failure message, scenario/evaluation when applicable, and the safe events emitted for that experiment. No API keys, provider state, tool input/output, or raw provider errors are stored.
 
-Writes are serialized within the server process and replace the snapshot through a temporary file in the same directory. Missing history starts empty; malformed or unsupported snapshots are preserved and reported as a storage failure. A history write failure does not change experiment execution status; it produces only a generic server-side warning. There is no history UI or read endpoint in v0.6.1. v0.6.2 is planned to add history list/detail and event inspection. Before exposing history reads, the local versus LAN access boundary must be addressed; v0.6.1 adds no authentication or network access control.
+Writes are serialized within the server process and replace the snapshot through a temporary file in the same directory. Missing history starts empty; malformed or unsupported snapshots are preserved and reported as a storage failure. A history write failure does not change experiment execution status; it produces only a generic server-side warning. v0.6.1 itself had no history UI or read endpoint. v0.6.2 adds list/detail and event inspection and limits history reads to loopback access; v0.6.1 adds no authentication or network access control.
+
+## v0.6.2 — History List and Experiment Detail
+
+The read-only `GET /api/experiments/history` endpoint returns newest-first summaries, and `GET /api/experiments/history/[id]` returns one validated record with its stored events. The page loads the history list, allows selecting a run to inspect its result, evaluation, and events, and refreshes the list after a live experiment stream closes. Live experiment state and historical detail stay separate.
+
+History reads are local-only: the normal `dev` and `start` commands bind to `127.0.0.1`, and the read routes accept only loopback `Host` values. Forwarded headers are not treated as client identity. No history sharing over LAN, account system, or cloud storage is provided.

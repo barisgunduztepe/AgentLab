@@ -19,6 +19,11 @@ export interface ExperimentHistoryRecord {
   events: ExperimentEvent[];
 }
 
+export type ExperimentHistorySummary = Pick<
+  ExperimentHistoryRecord,
+  "id" | "task" | "status" | "startedAt" | "endedAt" | "durationMs" | "scenarioId" | "evaluation"
+>;
+
 interface ExperimentHistorySnapshot {
   schemaVersion: 1;
   records: ExperimentHistoryRecord[];
@@ -63,6 +68,32 @@ export class ExperimentHistoryStore {
   async readAll(): Promise<ExperimentHistoryRecord[]> {
     await this.writeQueue;
     return (await this.readSnapshot()).records;
+  }
+
+  async listSummaries(): Promise<ExperimentHistorySummary[]> {
+    await this.writeQueue;
+    const records = (await this.readSnapshot()).records;
+    return records
+      .slice()
+      .sort((left, right) =>
+        Date.parse(right.endedAt) - Date.parse(left.endedAt) || compareIds(left.id, right.id),
+      )
+      .map(({ id, task, status, startedAt, endedAt, durationMs, scenarioId, evaluation }) => ({
+        id,
+        task,
+        status,
+        startedAt,
+        endedAt,
+        durationMs,
+        ...(scenarioId === undefined ? {} : { scenarioId }),
+        ...(evaluation === undefined ? {} : { evaluation }),
+      }));
+  }
+
+  async getById(id: string): Promise<ExperimentHistoryRecord | undefined> {
+    await this.writeQueue;
+    const records = (await this.readSnapshot()).records;
+    return records.find((record) => record.id === id);
   }
 
   private async appendSerialized(record: ExperimentHistoryRecord): Promise<void> {
@@ -211,7 +242,11 @@ function isValidRecord(value: unknown, strictKeys: boolean): value is Experiment
   if (value.status === "completed" && (value.output === undefined || value.errorMessage !== undefined)) return false;
   if (value.status === "failed" && (value.output !== undefined || value.errorMessage === undefined)) return false;
 
-  return value.events.every((event) => isValidEvent(event, strictKeys));
+  if (value.evaluation !== undefined && value.scenarioId === undefined) return false;
+
+  return value.events.every((event) =>
+    isValidEvent(event, strictKeys) && event.experimentId === value.id,
+  );
 }
 
 function isValidEvent(value: unknown, strictKeys: boolean): value is ExperimentEvent {
@@ -302,6 +337,10 @@ function hasExactKeys(value: Record<string, unknown>, keys: string[]): boolean {
 
 function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
   return Object.keys(value).every((key) => keys.includes(key));
+}
+
+function compareIds(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
