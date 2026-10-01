@@ -36,11 +36,13 @@ export class SingleAgent {
       return { type: "text", text: output };
     }
 
-    let response = await this.modelProvider.generateResponse(task);
+    let response = await this.modelProvider.generateResponse(task, this.tools);
     let executionCount = 0;
 
     while (response.type === "tool_call") {
       if (
+        typeof response.callId !== "string" ||
+        response.callId.trim().length === 0 ||
         typeof response.toolName !== "string" ||
         response.toolName.trim().length === 0 ||
         typeof response.input !== "string"
@@ -72,21 +74,11 @@ export class SingleAgent {
       }
 
       onToolLifecycle?.({ type: "tool.completed", toolName: tool.name });
-      const continuationPrompt = buildToolContinuationPrompt(task, tool.name, toolResult);
-      response = await this.modelProvider.generateResponse(continuationPrompt);
+      response = await this.modelProvider.continueAfterToolCall(response.callId, toolResult);
     }
 
     return response;
   }
-}
-
-function buildToolContinuationPrompt(task: string, toolName: string, toolResult: string): string {
-  return [
-    `Original user task:\n${task}`,
-    `Tool executed: ${toolName}`,
-    `Tool result:\n${toolResult}`,
-    "Continue the original task using this tool result. Return a final text response unless another tool call is necessary.",
-  ].join("\n\n");
 }
 
 function isSimpleArithmeticExpression(task: string): boolean {

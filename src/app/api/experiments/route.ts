@@ -1,7 +1,8 @@
-import { FakeModelProvider } from "@/agent/providers/fake-model-provider";
-import { SingleAgent } from "@/agent/single-agent";
-import { CalculatorTool } from "@/tools/calculator-tool";
-import { runExperiment } from "@/experiments/run-experiment";
+import { createModelProvider } from "../../../agent/create-model-provider";
+import type { ModelProvider } from "../../../agent/model-provider";
+import { SingleAgent } from "../../../agent/single-agent";
+import { runExperiment } from "../../../experiments/run-experiment";
+import { CalculatorTool } from "../../../tools/calculator-tool";
 
 export async function POST(request: Request): Promise<Response> {
   let body: unknown;
@@ -26,6 +27,14 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const task = body.task.trim();
+  let modelProvider: ModelProvider;
+
+  try {
+    modelProvider = createModelProvider();
+  } catch {
+    return Response.json({ error: "Experiment provider is not configured." }, { status: 500 });
+  }
+
   const encoder = new TextEncoder();
   let streamCancelled = false;
 
@@ -33,7 +42,7 @@ export async function POST(request: Request): Promise<Response> {
     async start(controller) {
       try {
         const calculatorTool = new CalculatorTool();
-        const agent = new SingleAgent(new FakeModelProvider(), [calculatorTool]);
+        const agent = new SingleAgent(modelProvider, [calculatorTool]);
 
         await runExperiment(task, agent, (event) => {
           if (streamCancelled) {

@@ -7,11 +7,12 @@ Bu belge, AgentLab'in mevcut repository durumunu ve onaylanmış geliştirme sı
 - v0.1 Single Agent Foundation tamamlandı.
 - v0.2 Tool System tamamlandı; v0.2.1–v0.2.5 exit checkpoint'i geçti.
 - v0.2.4 Tool Observability tamamlandı.
-- API route aktif akışta `FakeModelProvider` kullanıyor.
-- `OpenAIModelProvider` ve `GroqModelProvider` implementasyonları mevcut; aktif uygulama akışına bağlı değiller.
+- API route provider'ı `AGENTLAB_MODEL_PROVIDER=fake|openai` ayarından açıkça seçiyor; eksik/geçersiz ayarda fallback yapmıyor.
+- `OpenAIModelProvider` Responses API ile calculator function calling yapıyor; `GroqModelProvider` bu milestone'da kullanılmıyor.
 - v0.3.1 Structured Tool-Call Contract tamamlandı.
 - v0.3.2 Bounded Tool Execution Loop tamamlandı.
-- Sıradaki milestone: **v0.3.3 Tek Gerçek Provider ile Tool Calling Doğrulaması**.
+- v0.3.3 OpenAI tool calling implementasyonu ve otomatik doğrulamaları tamamlandı; hesapta $0.00 API kredisi olduğundan gerçek API smoke testi yapılmadı ve canlı davranış doğrulanmadı.
+- Sonraki planlı milestone: **v0.4.1 Sabit deney senaryoları** (v0.3.3 smoke testinden sonra).
 
 ## v0.1 — Single Agent Foundation
 
@@ -88,11 +89,15 @@ Event payload'ı varsayılan olarak tool input/output içeriklerini taşımaz. T
 
 **Durum:** Tamamlandı. `SingleAgent` structured tool-call'ları en fazla üç kez çalıştırıp her sonucu provider-neutral continuation prompt'u ile modele iletiyor; unknown/invalid çağrılar çalıştırılmadan, tool execution hataları güvenli experiment failure ile sonlanıyor. Lifecycle event'leri tool input/output içermiyor. Testler, lint, TypeScript kontrolü ve production build başarılı oldu.
 
-### 👉 v0.3.3 Tek Gerçek Provider ile Tool Calling Doğrulaması
+### 🟡 v0.3.3 Tek Gerçek Provider ile Tool Calling
 
 **Amaç:** Yapılandırılmış tool-call akışını bir gerçek provider ile kontrollü biçimde doğrulamak. Fake/test yolu korunur.
 
-Bu sürümde multi-agent yoktur. Iteration/call limitleri zorunludur.
+**Uygulama:** OpenAI Responses API function calling yalnızca mevcut calculator tool için etkinleştirildi. Provider `call_id` ve `previous_response_id` eşleşmesini kendi içinde yönetir; `SingleAgent` provider-neutral `callId` ve tool sonucuyla devam eder. Üç tool execution limiti korunur. Çoklu function call ve hatalı argümanlar güvenli failure üretir. Provider seçimi için `AGENTLAB_MODEL_PROVIDER=fake|openai`, OpenAI modu için server-side `OPENAI_API_KEY` ve `OPENAI_MODEL` zorunludur. Silent fallback yoktur.
+
+Calculator function schema'sı bilinçli olarak OpenAI provider içinde tanımlıdır; ikinci tool eklenirken schema'yı `Tool` sözleşmesine taşıma kararı yeniden değerlendirilecektir. FakeModelProvider testlerde korunur. SDK testleri mock'tur ve otomatik testler gerçek API ağına çıkmaz. UI, multi-provider desteği ve token streaming bu kapsamda değildir.
+
+**Doğrulama:** 7 test dosyası / 43 test başarılı; lint uyarısız; production build ve `git diff --check` başarılı. Hesapta $0.00 API kredisi olduğundan gerçek API smoke testi yapılmadı; bu nedenle canlı OpenAI davranışı doğrulanmış değildir.
 
 ## v0.4 — Deterministic Scenarios & Simple Evaluation
 

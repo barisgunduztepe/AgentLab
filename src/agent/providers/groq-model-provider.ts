@@ -1,7 +1,8 @@
 import OpenAI from "openai";
-import type { ModelProvider, ModelResponse } from "../model-provider";
+import type { ModelResponse } from "../model-provider";
 
-export class GroqModelProvider implements ModelProvider {
+// Legacy text-only provider. v0.3.3 does not wire or support this provider.
+export class GroqModelProvider {
   private readonly client: OpenAI;
 
   constructor() {

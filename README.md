@@ -55,8 +55,16 @@ Bunlar sonraki sürümlerde değerlendirilecek.
 
 Proje küçük, test edilebilir ve geri alınabilir milestone'larla geliştirilecek. Her adımda önce kavram öğrenilecek; ardından küçük implementasyon, test, canlı doğrulama ve Git checkpoint'i gelecek.
 
-**Mevcut durum:** v0.3.2 Bounded Tool Execution Loop tamamlandı.
+**Mevcut durum:** v0.3.3 OpenAI tool calling implementasyonu ve otomatik doğrulamaları tamamlandı. Hesapta $0.00 API kredisi bulunduğu için gerçek API smoke testi yapılmadı; canlı OpenAI davranışı doğrulanmadı.
 
-**Sıradaki milestone:** v0.3.3 — Tek Gerçek Provider ile Tool Calling Doğrulaması
+## v0.3.3 — OpenAI Responses API
+
+Provider seçimi açıkça `AGENTLAB_MODEL_PROVIDER=fake` veya `AGENTLAB_MODEL_PROVIDER=openai` olarak yapılmalıdır. Değişken eksik veya geçersizse endpoint hata verir; otomatik provider fallback'i yoktur.
+
+OpenAI modu için server-side `OPENAI_API_KEY` ve `OPENAI_MODEL` ortam değişkenleri gerekir. `.env.example` örnek yapılandırmayı gösterir. Örneğin `OPENAI_MODEL=gpt-6-luna` kullanılabilir; model erişimi OpenAI API hesabına bağlıdır.
+
+Gerçek API smoke testi, API kredisi olduğunda manuel yapılabilir: `.env.local` içinde `AGENTLAB_MODEL_PROVIDER=openai`, `OPENAI_API_KEY` ve `OPENAI_MODEL` ayarla, uygulamayı başlat ve “Use the calculator to calculate 12 * 8 and explain the result.” görevini gönder. Otomatik testler bu API'yi çağırmaz. Mevcut canlı davranış doğrulanmamıştır.
+
+v0.3.3'te OpenAI function schema'sı yalnızca mevcut calculator tool için provider içinde tanımlıdır. İkinci tool eklenirse schema'yı `Tool` sözleşmesine taşıma kararı yeniden değerlendirilecektir. Tool input/output lifecycle event'lerine eklenmez.
 
 Sürümlerin ve milestone'ların ayrıntılı durumu için [ROADMAP.md](ROADMAP.md) dosyasına bakın.

@@ -11,7 +11,10 @@ describe("runExperiment", () => {
   it("emits tool events between agent start and completion for calculator tasks", async () => {
     const events: ExperimentEvent[] = [];
     const agent = new SingleAgent(
-      { async generateResponse() { return { type: "text", text: "unused" }; } },
+      {
+        async generateResponse() { return { type: "text", text: "unused" }; },
+        async continueAfterToolCall() { return { type: "text", text: "unused" }; },
+      },
       [new CalculatorTool()],
     );
 
@@ -37,7 +40,10 @@ describe("runExperiment", () => {
     const events: ExperimentEvent[] = [];
     const rawToolError = "Division by zero is not allowed.";
     const agent = new SingleAgent(
-      { async generateResponse() { return { type: "text", text: "unused" }; } },
+      {
+        async generateResponse() { return { type: "text", text: "unused" }; },
+        async continueAfterToolCall() { return { type: "text", text: "unused" }; },
+      },
       [new CalculatorTool()],
     );
 
@@ -62,6 +68,9 @@ describe("runExperiment", () => {
     const output = { type: "text" as const, text: "Experiment result." };
     const modelProvider: ModelProvider = {
       async generateResponse() {
+        return output;
+      },
+      async continueAfterToolCall() {
         return output;
       },
     };
@@ -101,7 +110,7 @@ describe("runExperiment", () => {
   ])("fails safely for an invalid or unknown tool request without starting a tool", async ({ toolName, privateValue }) => {
     const events: ExperimentEvent[] = [];
     const agent = new SingleAgent(new FakeModelProvider([
-      { type: "tool_call", toolName, input: "sensitive input" },
+      { type: "tool_call", callId: "fake-call", toolName, input: "sensitive input" },
     ]), [new CalculatorTool()]);
 
     const experiment = await runExperiment("Please calculate this.", agent, (event) => events.push(event));
@@ -122,10 +131,10 @@ describe("runExperiment", () => {
     const rawToolError = "private tool failure details";
     const events: ExperimentEvent[] = [];
     const provider = new FakeModelProvider([
-      { type: "tool_call", toolName: "failing", input: "secret arguments" },
+      { type: "tool_call", callId: "fake-call", toolName: "failing", input: "secret arguments" },
       { type: "text", text: "This response must not be requested." },
     ]);
-    const generateResponse = vi.spyOn(provider, "generateResponse");
+    const continueAfterToolCall = vi.spyOn(provider, "continueAfterToolCall");
     const failingTool: Tool = {
       name: "failing",
       description: "Fails in a controlled test.",
@@ -142,7 +151,7 @@ describe("runExperiment", () => {
 
     expect(experiment.status).toBe("failed");
     expect(experiment.errorMessage).toBe("Agent görevi tamamlayamadı.");
-    expect(generateResponse).toHaveBeenCalledOnce();
+    expect(continueAfterToolCall).not.toHaveBeenCalled();
     expect(events.map((event) => event.type)).toEqual([
       "experiment.started",
       "agent.started",
@@ -160,10 +169,10 @@ describe("runExperiment", () => {
     const privateResult = "private tool result value";
     const events: ExperimentEvent[] = [];
     const provider = new FakeModelProvider([
-      { type: "tool_call", toolName: "private-tool", input: privateInput },
+      { type: "tool_call", callId: "fake-call", toolName: "private-tool", input: privateInput },
       { type: "text", text: "Task completed." },
     ]);
-    const generateResponse = vi.spyOn(provider, "generateResponse");
+    const continueAfterToolCall = vi.spyOn(provider, "continueAfterToolCall");
     const tool: Tool = {
       name: "private-tool",
       description: "Returns private test data.",
@@ -180,8 +189,7 @@ describe("runExperiment", () => {
 
     expect(experiment.status).toBe("completed");
     expect(experiment.output).toEqual({ type: "text", text: "Task completed." });
-    expect(generateResponse).toHaveBeenCalledTimes(2);
-    expect(generateResponse.mock.calls[1][0]).toContain(privateResult);
+    expect(continueAfterToolCall).toHaveBeenCalledExactlyOnceWith("fake-call", privateResult);
     expect(JSON.stringify(events)).not.toContain(privateInput);
     expect(JSON.stringify(events)).not.toContain(privateResult);
     expect(events.map((event) => event.type)).toEqual([
@@ -198,6 +206,9 @@ describe("runExperiment", () => {
     const rawProviderError = "private provider response and credential details";
     const modelProvider: ModelProvider = {
       async generateResponse() {
+        throw new Error(rawProviderError);
+      },
+      async continueAfterToolCall() {
         throw new Error(rawProviderError);
       },
     };

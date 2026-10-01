@@ -6,9 +6,11 @@ import { CalculatorTool } from "../tools/calculator-tool";
 import type { Tool } from "../tools/tool";
 
 describe("SingleAgent", () => {
+  const unusedContinuation = async () => ({ type: "text" as const, text: "unused" });
+
   it("uses the injected calculator for arithmetic tasks", async () => {
     const generateResponse = vi.fn(async () => ({ type: "text" as const, text: "unused" }));
-    const agent = new SingleAgent({ generateResponse }, [new CalculatorTool()]);
+    const agent = new SingleAgent({ generateResponse, continueAfterToolCall: unusedContinuation }, [new CalculatorTool()]);
 
     await expect(agent.run("12 * 8")).resolves.toEqual({ type: "text", text: "96" });
     expect(generateResponse).not.toHaveBeenCalled();
@@ -16,7 +18,7 @@ describe("SingleAgent", () => {
 
   it("emits tool lifecycle signals around a successful calculator call", async () => {
     const signals: ToolLifecycleSignal[] = [];
-    const agent = new SingleAgent({ generateResponse: async () => ({ type: "text", text: "unused" }) }, [new CalculatorTool()]);
+    const agent = new SingleAgent({ generateResponse: async () => ({ type: "text", text: "unused" }), continueAfterToolCall: unusedContinuation }, [new CalculatorTool()]);
 
     await expect(agent.run("12 * 8", (signal) => signals.push(signal))).resolves.toEqual({ type: "text", text: "96" });
     expect(signals).toEqual([
@@ -28,7 +30,7 @@ describe("SingleAgent", () => {
   it("emits a failed tool lifecycle signal and rethrows tool errors", async () => {
     const signals: ToolLifecycleSignal[] = [];
     const rawToolError = "Division by zero is not allowed.";
-    const agent = new SingleAgent({ generateResponse: async () => ({ type: "text", text: "unused" }) }, [new CalculatorTool()]);
+    const agent = new SingleAgent({ generateResponse: async () => ({ type: "text", text: "unused" }), continueAfterToolCall: unusedContinuation }, [new CalculatorTool()]);
 
     await expect(agent.run("5 / 0", (signal) => signals.push(signal))).rejects.toThrow(rawToolError);
     expect(signals).toEqual([
@@ -46,11 +48,11 @@ describe("SingleAgent", () => {
     const execute = vi.fn(async () => "Calculator should not run.");
     const calculatorTool: Tool = { name: "calculator", description: "Evaluates arithmetic expressions.", execute };
     const generateResponse = vi.fn(async () => ({ type: "text" as const, text: providerText }));
-    const agent = new SingleAgent({ generateResponse }, [calculatorTool]);
+    const agent = new SingleAgent({ generateResponse, continueAfterToolCall: unusedContinuation }, [calculatorTool]);
 
     await expect(agent.run(task)).resolves.toEqual({ type: "text", text: providerText });
     expect(execute).not.toHaveBeenCalled();
-    expect(generateResponse).toHaveBeenCalledExactlyOnceWith(task);
+    expect(generateResponse).toHaveBeenCalledExactlyOnceWith(task, [calculatorTool]);
   });
 
   it("preserves the provider behavior when no tools are injected", async () => {
@@ -60,6 +62,9 @@ describe("SingleAgent", () => {
     const modelProvider: ModelProvider = {
       async generateResponse(prompt) {
         receivedPrompt = prompt;
+        return { type: "text", text: providerText };
+      },
+      async continueAfterToolCall() {
         return { type: "text", text: providerText };
       },
     };
@@ -74,21 +79,19 @@ describe("SingleAgent", () => {
     const execute = vi.fn((input: string) => calculator.execute(input));
     const calculatorTool: Tool = { ...calculator, execute };
     const provider = new FakeModelProvider([
-      { type: "tool_call", toolName: "calculator", input: "12 * 8" },
+      { type: "tool_call", callId: "call-1", toolName: "calculator", input: "12 * 8" },
       { type: "text", text: "The answer is 96." },
     ]);
     const generateResponse = vi.spyOn(provider, "generateResponse");
+    const continueAfterToolCall = vi.spyOn(provider, "continueAfterToolCall");
     const agent = new SingleAgent(provider, [calculatorTool]);
 
     await expect(agent.run(task)).resolves.toEqual({ type: "text", text: "The answer is 96." });
 
     expect(execute).toHaveBeenCalledExactlyOnceWith("12 * 8");
-    expect(generateResponse).toHaveBeenCalledTimes(2);
+    expect(generateResponse).toHaveBeenCalledOnce();
     expect(generateResponse.mock.calls[0][0]).toBe(task);
-    expect(generateResponse.mock.calls[1][0]).toContain(task);
-    expect(generateResponse.mock.calls[1][0]).toContain("Tool executed: calculator");
-    expect(generateResponse.mock.calls[1][0]).toContain("Tool result:\n96");
-    expect(generateResponse.mock.calls[1][0]).toContain("Continue the original task");
+    expect(continueAfterToolCall).toHaveBeenCalledExactlyOnceWith("call-1", "96");
   });
 
   it("executes repeated valid tool calls within the budget", async () => {
@@ -96,11 +99,11 @@ describe("SingleAgent", () => {
     const execute = vi.fn((input: string) => calculator.execute(input));
     const calculatorTool: Tool = { ...calculator, execute };
     const provider = new FakeModelProvider([
-      { type: "tool_call", toolName: "calculator", input: "12 * 8" },
-      { type: "tool_call", toolName: "calculator", input: "96 + 1" },
+      { type: "tool_call", callId: "call-1", toolName: "calculator", input: "12 * 8" },
+      { type: "tool_call", callId: "call-2", toolName: "calculator", input: "96 + 1" },
       { type: "text", text: "The final result is 97." },
     ]);
-    const generateResponse = vi.spyOn(provider, "generateResponse");
+    const continueAfterToolCall = vi.spyOn(provider, "continueAfterToolCall");
     const agent = new SingleAgent(provider, [calculatorTool]);
 
     await expect(agent.run("Calculate and increment.")).resolves.toEqual({
@@ -109,21 +112,20 @@ describe("SingleAgent", () => {
     });
 
     expect(execute).toHaveBeenCalledTimes(2);
-    expect(generateResponse).toHaveBeenCalledTimes(3);
-    expect(generateResponse.mock.calls[1][0]).toContain("Tool result:\n96");
-    expect(generateResponse.mock.calls[2][0]).toContain("Tool result:\n97");
+    expect(continueAfterToolCall).toHaveBeenNthCalledWith(1, "call-1", "96");
+    expect(continueAfterToolCall).toHaveBeenNthCalledWith(2, "call-2", "97");
   });
 
   it("executes at most three tools and sends the third result before rejecting a fourth call", async () => {
     const execute = vi.fn(async (input: string) => `result-${input}`);
     const countedTool: Tool = { name: "counted", description: "Counts test calls.", execute };
     const provider = new FakeModelProvider([
-      { type: "tool_call", toolName: "counted", input: "one" },
-      { type: "tool_call", toolName: "counted", input: "two" },
-      { type: "tool_call", toolName: "counted", input: "three" },
-      { type: "tool_call", toolName: "counted", input: "four" },
+      { type: "tool_call", callId: "call-1", toolName: "counted", input: "one" },
+      { type: "tool_call", callId: "call-2", toolName: "counted", input: "two" },
+      { type: "tool_call", callId: "call-3", toolName: "counted", input: "three" },
+      { type: "tool_call", callId: "call-4", toolName: "counted", input: "four" },
     ]);
-    const generateResponse = vi.spyOn(provider, "generateResponse");
+    const continueAfterToolCall = vi.spyOn(provider, "continueAfterToolCall");
     const signals: ToolLifecycleSignal[] = [];
     const agent = new SingleAgent(provider, [countedTool]);
 
@@ -132,8 +134,8 @@ describe("SingleAgent", () => {
     );
 
     expect(execute).toHaveBeenCalledTimes(3);
-    expect(generateResponse).toHaveBeenCalledTimes(4);
-    expect(generateResponse.mock.calls[3][0]).toContain("Tool result:\nresult-three");
+    expect(continueAfterToolCall).toHaveBeenCalledTimes(3);
+    expect(continueAfterToolCall).toHaveBeenLastCalledWith("call-3", "result-three");
     expect(signals.map((signal) => signal.type)).toEqual([
       "tool.started", "tool.completed",
       "tool.started", "tool.completed",
