@@ -94,3 +94,9 @@ Sabit senaryolar, experiment sonucu ve yakalanan tool lifecycle event'leri üzer
 Custom/free-text görevler değerlendirilmez. Bilinmeyen-tool senaryosu yalnızca gözlenen sonucu değerlendirir: experiment başarısız olmuş ve hiçbir tool lifecycle event'i oluşmamış olmalıdır. Bu, hatanın özellikle unknown tool kaynaklı olduğunu kanıtlamaz. Gerçek provider çıktıları deterministik değildir; sabit sayı ve tool-count assertion'ları, insanın kabul edebileceği bir yanıtı da FAIL sayabilir. LLM-as-judge, anlamsal değerlendirme, fuzzy matching ve skor bu milestone'un kapsamı dışındadır.
 
 Sürümlerin ve milestone'ların ayrıntılı durumu için [ROADMAP.md](ROADMAP.md) dosyasına bakın.
+
+## v0.5.1 — Controlled Handoff Between Two Agents
+
+The fixed `analyst-finalizer-handoff` scenario demonstrates one coordinator-directed transfer. The Analyst receives the original objective and returns concise notes. The Finalizer receives the original objective and those notes as separately labelled context, then returns the experiment's final response. The runner creates one explicit `{ task, context }` handoff payload and stops after the Finalizer.
+
+Each agent gets its own provider instance. Fake mode uses separate deterministic server-side response fixtures; real providers are independently created and retain their existing retry wrapper. Existing aggregate experiment events remain in use, and this handoff scenario has no v0.4.2 evaluation. Agent A does not choose Agent B: model-requested routing is not implemented. Richer multi-agent lifecycle events, contribution visibility, handoff visualization, and error observability are deferred to v0.5.2.

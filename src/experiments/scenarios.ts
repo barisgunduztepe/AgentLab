@@ -30,6 +30,12 @@ export const SCENARIOS = [
     description: "A scripted unavailable tool request should fail safely without running a tool.",
     task: "Look up the current weather in Istanbul using an appropriate tool.",
   },
+  {
+    id: "analyst-finalizer-handoff",
+    title: "Analyst to Finalizer handoff",
+    description: "Transfer concise Analyst notes once to a Finalizer for a clear answer.",
+    task: "Explain how a household thermostat keeps a room near its target temperature.",
+  },
 ] as const satisfies readonly Scenario[];
 
 export function getScenarioById(id: string): Scenario | undefined {

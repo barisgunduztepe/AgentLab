@@ -1,7 +1,9 @@
 import { createModelProvider } from "../../../agent/create-model-provider";
 import type { ModelProvider } from "../../../agent/model-provider";
 import { SingleAgent } from "../../../agent/single-agent";
+import { TwoAgentHandoffRunner } from "../../../agent/two-agent-handoff-runner";
 import { runExperiment } from "../../../experiments/run-experiment";
+import { getHandoffFakeFixtures } from "../../../experiments/handoff-fake-fixtures";
 import { evaluateScenario } from "../../../experiments/scenario-evaluator";
 import { getScenarioFakeResponses } from "../../../experiments/scenario-fake-fixtures";
 import { getScenarioById } from "../../../experiments/scenarios";
@@ -58,13 +60,23 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  let modelProvider: ModelProvider;
+  let modelProviders: ModelProvider[];
 
   try {
-    const fakeResponses = scenarioId && process.env.AGENTLAB_MODEL_PROVIDER === "fake"
-      ? getScenarioFakeResponses(scenarioId)
-      : undefined;
-    modelProvider = createModelProvider(fakeResponses ? { fakeResponses } : undefined);
+    if (scenarioId === "analyst-finalizer-handoff") {
+      const handoffFixtures = process.env.AGENTLAB_MODEL_PROVIDER === "fake"
+        ? getHandoffFakeFixtures()
+        : undefined;
+      modelProviders = [
+        createModelProvider(handoffFixtures ? { fakeResponses: handoffFixtures.analyst } : undefined),
+        createModelProvider(handoffFixtures ? { fakeResponses: handoffFixtures.finalizer } : undefined),
+      ];
+    } else {
+      const fakeResponses = scenarioId && process.env.AGENTLAB_MODEL_PROVIDER === "fake"
+        ? getScenarioFakeResponses(scenarioId)
+        : undefined;
+      modelProviders = [createModelProvider(fakeResponses ? { fakeResponses } : undefined)];
+    }
   } catch {
     return Response.json({ error: "Experiment provider is not configured." }, { status: 500 });
   }
@@ -76,8 +88,12 @@ export async function POST(request: Request): Promise<Response> {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        const calculatorTool = new CalculatorTool();
-        const agent = new SingleAgent(modelProvider, [calculatorTool]);
+        const agent = scenarioId === "analyst-finalizer-handoff"
+          ? new TwoAgentHandoffRunner(
+              new SingleAgent(modelProviders[0], [new CalculatorTool()]),
+              new SingleAgent(modelProviders[1], [new CalculatorTool()]),
+            )
+          : new SingleAgent(modelProviders[0], [new CalculatorTool()]);
 
         const experiment = await runExperiment(task, agent, (event) => {
           capturedEvents.push(event);

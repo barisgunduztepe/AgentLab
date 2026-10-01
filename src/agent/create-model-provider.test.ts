@@ -84,4 +84,22 @@ describe("createModelProvider", () => {
       RetryingModelProvider,
     );
   });
+
+  it.each(["openai", "gemini"] as const)("creates independent retry-wrapped %s providers for separate agents", (provider) => {
+    process.env.AGENTLAB_MODEL_PROVIDER = provider;
+    if (provider === "openai") {
+      process.env.OPENAI_API_KEY = "test-key";
+      process.env.OPENAI_MODEL = "gpt-6-luna";
+    } else {
+      process.env.GEMINI_API_KEY = "test-key";
+      process.env.GEMINI_MODEL = "gemini-test-model";
+    }
+
+    const analystProvider = createModelProvider();
+    const finalizerProvider = createModelProvider();
+
+    expect(analystProvider).toBeInstanceOf(RetryingModelProvider);
+    expect(finalizerProvider).toBeInstanceOf(RetryingModelProvider);
+    expect(analystProvider).not.toBe(finalizerProvider);
+  });
 });

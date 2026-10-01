@@ -145,9 +145,11 @@ Doğrudan metin senaryosu tamamlanmış, boş olmayan metin ve sıfır tool life
 
 ## v0.5 — Multi-Agent Foundation
 
-### ⬜ v0.5.1 İki agent arasında kontrollü handoff
+### ✅ v0.5.1 İki agent arasında kontrollü handoff
 
 **Amaç:** Tek ve sınırları belli bir görev aktarımını göstermek.
+
+**Uygulama:** Sabit `analyst-finalizer-handoff` senaryosu, coordinator tarafından Analyst'ten Finalizer'a tam bir kez aktarılır. Analyst özgün görev için kısa not üretir; Finalizer özgün görevi ve bu notları alıp son yanıtı döndürür. İki ayrı provider instance'ı kullanılır; Fake fixture'ları server-side ve deterministiktir. Var olan aggregate experiment event akışı korunur. Modelin handoff seçmesi, geri yönlendirme veya genel multi-agent orchestration yoktur. v0.5.2 daha ayrıntılı agent katkısı, handoff ve hata gözlemlenebilirliğini kapsar.
 
 ### ⬜ v0.5.2 Multi-agent lifecycle ve event akışı
 

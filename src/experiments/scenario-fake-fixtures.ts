@@ -1,7 +1,7 @@
 import type { ModelResponse } from "../agent/model-provider";
 import { SCENARIOS } from "./scenarios";
 
-type ScenarioId = (typeof SCENARIOS)[number]["id"];
+type ScenarioId = Exclude<(typeof SCENARIOS)[number]["id"], "analyst-finalizer-handoff">;
 
 const SCENARIO_FAKE_FIXTURES = {
   "direct-text": [

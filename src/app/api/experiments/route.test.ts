@@ -171,6 +171,27 @@ describe("POST /api/experiments fixed scenarios", () => {
     expect(JSON.stringify(events)).not.toContain("scenario-step-");
   });
 
+  it("dispatches the handoff scenario through two Fake agents without scenario evaluation", async () => {
+    process.env.AGENTLAB_MODEL_PROVIDER = "fake";
+
+    const response = await post({ scenarioId: "analyst-finalizer-handoff" });
+    const events = await readEvents(response);
+
+    expect(events.map((event) => event.type)).toEqual([
+      "experiment.started",
+      "agent.started",
+      "agent.completed",
+      "experiment.completed",
+    ]);
+    expect(events.find((event) => event.type === "agent.completed")).toMatchObject({
+      output: {
+        type: "text",
+        text: "A thermostat keeps a room near its target by measuring the air temperature and comparing it with the set point. When the room is too cold or hot, it turns heating or cooling on, then switches it off as the target is reached.",
+      },
+    });
+    expect(events.some((event) => event.type === "scenario.evaluated")).toBe(false);
+  });
+
   it("fails safely for the unknown-tool scenario without executing a tool", async () => {
     process.env.AGENTLAB_MODEL_PROVIDER = "fake";
 

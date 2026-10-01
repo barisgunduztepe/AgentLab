@@ -4,7 +4,7 @@ import type { Experiment, ExperimentEvent, ExperimentOutput } from "./types";
 
 export async function runExperiment(
   task: string,
-  agent: SingleAgent,
+  agent: Pick<SingleAgent, "run">,
   onEvent: (event: ExperimentEvent) => void,
 ): Promise<Experiment> {
   const id = randomUUID();
