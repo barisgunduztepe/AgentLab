@@ -4,19 +4,10 @@ Bu belge, AgentLab'in mevcut repository durumunu ve onaylanmış geliştirme sı
 
 ## Mevcut checkpoint
 
-- v0.1 Single Agent Foundation tamamlandı.
-- v0.2 Tool System tamamlandı; v0.2.1–v0.2.5 exit checkpoint'i geçti.
-- v0.2.4 Tool Observability tamamlandı.
-- API route provider'ı `AGENTLAB_MODEL_PROVIDER=fake|openai|gemini` ayarından açıkça seçiyor; eksik/geçersiz ayarda fallback yapmıyor.
-- `OpenAIModelProvider` Responses API, `GeminiModelProvider` Gemini Interactions API ile yalnızca calculator function calling yapıyor; `GroqModelProvider` bu milestone'larda kullanılmıyor.
-- v0.3.1 Structured Tool-Call Contract tamamlandı.
-- v0.3.2 Bounded Tool Execution Loop tamamlandı.
-- v0.3.3 OpenAI tool calling implementasyonu ve otomatik doğrulamaları tamamlandı; hesapta $0.00 API kredisi olduğundan gerçek API smoke testi yapılmadı ve canlı davranış doğrulanmadı.
-- v0.3.4 Gemini provider implementasyonu tamamlandı; SDK davranışı mock testlerle doğrulandı. Manuel REST kontrolünde toolsuz Interactions isteği başarılı oldu; aynı calculator tool şemalı istek farklı denemelerde hem başarılı oldu hem de geçici yüksek talep kaynaklı `503 service_unavailable` aldı. AgentLab'in canlı SDK tool-calling davranışı doğrulanmadı; yeni smoke testleri ertelendi.
-- v0.3.5 Provider Resilience implementasyonu tamamlandı; provider-neutral retry decorator'ı OpenAI ve Gemini'yi sarıyor, FakeModelProvider'ı sarmıyor. Otomatik doğrulama mock tabanlıdır; canlı Gemini smoke testi yapılmadı.
-- v0.4.1 Fixed Experiment Scenarios uygulaması ve otomatik doğrulamaları tamamlandı; Gemini canlı smoke testleri hâlâ ertelenmiştir.
-- v0.4.2 Simple Pass/Fail Evaluation uygulaması ve otomatik doğrulamaları tamamlandı; evaluation sabit senaryolarla sınırlıdır.
-- Sonraki planlı milestone: **v0.5.1 İki agent arasında kontrollü handoff**.
+- v0.1–v0.5.2 tamamlandı; son checkpoint v0.5.2 Multi-Agent Lifecycle Observability'dir.
+- v0.3 gerçek provider'larının canlı davranış doğrulaması sınırlıdır; Gemini tool-enabled isteklerinde daha önce 503 gözlenmiştir. Provider/API incelemesi bu v0.6.1 değişikliğinin dışındadır.
+- v0.6.1 Yerel deney kaydı tamamlandı; v0.6 genel hedefi henüz tamamlanmadı.
+- Sıradaki milestone **v0.6.2 Geçmiş listesi ve deney ayrıntısı**dır.
 
 ## v0.1 — Single Agent Foundation
 
@@ -161,13 +152,19 @@ Doğrudan metin senaryosu tamamlanmış, boş olmayan metin ve sıfır tool life
 
 ## v0.6 — Experiment History
 
-### ⬜ v0.6.1 Yerel deney kaydı
+### ✅ v0.6.1 Yerel deney kaydı
 
 **Amaç:** Şema ve saklama sınırı belirlendikten sonra deney sonuçlarını yerel olarak korumak.
+
+**Uygulama:** `schemaVersion: 1` içeren tek JSON snapshot, Windows'ta `%LOCALAPPDATA%\AgentLab\experiments.json` altında tutulur; repository ve OneDrive çalışma alanı kullanılmaz. API route terminal experiment, varsa scenario/evaluation ve güvenli event akışını bir kez kaydeder. Yazma işlemleri süreç içinde sıraya alınır ve geçici dosya aynı dizinde hazırlanıp hedefin yerine geçirilir. Bozuk veya desteklenmeyen snapshot hata verir ve üzerine yazılmaz. Persistence hatası experiment sonucunu değiştirmez; istemciye yeni event eklenmez ve sunucu yalnızca genel bir uyarı kaydeder.
+
+Bu milestone history UI veya history okuma endpoint'i içermez. v0.6.2, yerel geçmiş listesi ve deney ayrıntısı incelemesini ekleyecektir.
 
 ### ⬜ v0.6.2 Geçmiş listesi ve deney ayrıntısı
 
 **Amaç:** Kaydedilmiş deneyleri bulup sonuç ve event'lerini incelemek.
+
+Geçmiş okuma API'si açılmadan önce local/LAN erişim sınırı ele alınmalıdır; v0.6.1 kimlik doğrulama veya ağ erişim kontrolü eklemez.
 
 İlk hedef cloud database değildir.
 

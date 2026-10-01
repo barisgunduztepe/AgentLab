@@ -55,7 +55,7 @@ Bunlar sonraki sürümlerde değerlendirilecek.
 
 Proje küçük, test edilebilir ve geri alınabilir milestone'larla geliştirilecek. Her adımda önce kavram öğrenilecek; ardından küçük implementasyon, test, canlı doğrulama ve Git checkpoint'i gelecek.
 
-**Mevcut durum:** v0.4.2 Simple Pass/Fail Evaluation uygulaması ve otomatik doğrulamaları tamamlandı. v0.4.1 Fixed Experiment Scenarios ve v0.3.5 Provider Resilience da tamamlandı. Gemini toolsuz REST isteği başarılı oldu. Calculator tool şemalı REST isteği farklı denemelerde hem geçici `503 service_unavailable` aldı hem de başarılı oldu; sağlayıcı kapasitesi değişken. AgentLab üzerinden canlı tool-calling davranışı hâlâ doğrulanmamıştır ve yeni smoke testleri ertelenmiştir. v0.3.3 OpenAI canlı davranışı da gerçek API smoke testi yapılmadığı için doğrulanmamıştır.
+**Mevcut durum:** v0.5.1 Controlled Two-Agent Handoff, v0.5.2 Multi-Agent Lifecycle Observability ve v0.6.1 Yerel Deney Kaydı tamamlandı. v0.6 genel hedefi henüz tamamlanmadı; sıradaki milestone v0.6.2 geçmiş listesi/ayrıntı görünümüdür. Gemini tool-enabled canlı davranışı doğrulanmamıştır; API/provider incelemesi ertelenmiştir.
 
 ## v0.3.3 — OpenAI Responses API
 
@@ -99,8 +99,14 @@ Sürümlerin ve milestone'ların ayrıntılı durumu için [ROADMAP.md](ROADMAP.
 
 The fixed `analyst-finalizer-handoff` scenario demonstrates one coordinator-directed transfer. The Analyst receives the original objective and returns concise notes. The Finalizer receives the original objective and those notes as separately labelled context, then returns the experiment's final response. The runner creates one explicit `{ task, context }` handoff payload and stops after the Finalizer.
 
-Each agent gets its own provider instance. Fake mode uses separate deterministic server-side response fixtures; real providers are independently created and retain their existing retry wrapper. Existing aggregate experiment events remain in use, and this handoff scenario has no v0.4.2 evaluation. Agent A does not choose Agent B: model-requested routing is not implemented. Richer multi-agent lifecycle events, contribution visibility, handoff visualization, and error observability are deferred to v0.5.2.
+Each agent gets its own provider instance. Fake mode uses separate deterministic server-side response fixtures; real providers are independently created and retain their existing retry wrapper. Existing aggregate experiment events remain in use, and this handoff scenario has no v0.4.2 evaluation. Agent A does not choose Agent B: model-requested routing is not implemented. Scoped lifecycle, contribution, handoff, and safe failure observability were added in v0.5.2; no handoff visualization or dynamic routing is provided.
 
 ## v0.5.2 — Multi-Agent Lifecycle Observability
 
 The fixed handoff scenario now adds scoped Analyst/Finalizer lifecycle events, their returned contribution text, a completed or safely failed handoff event, and agent identity on tool lifecycle events. Existing aggregate `agent.started`, `agent.completed`, and experiment events remain. Agent failures expose only the stable `agent_execution_failed` code; invalid handoff data exposes `invalid_handoff`. Tool arguments/results and provider state remain private. Events observe the fixed coordinator-directed Analyst → Finalizer flow; they do not control routing. This milestone adds no dynamic routing or swarm behavior.
+
+## v0.6.1 — Local Experiment Persistence
+
+The API stores one terminal record per experiment in a versioned (`schemaVersion: 1`) JSON snapshot outside the repository. On Windows the default is `%LOCALAPPDATA%\AgentLab\experiments.json`. Records contain the task, terminal status/timing, final output or the existing safe failure message, scenario/evaluation when applicable, and the safe events emitted for that experiment. No API keys, provider state, tool input/output, or raw provider errors are stored.
+
+Writes are serialized within the server process and replace the snapshot through a temporary file in the same directory. Missing history starts empty; malformed or unsupported snapshots are preserved and reported as a storage failure. A history write failure does not change experiment execution status; it produces only a generic server-side warning. There is no history UI or read endpoint in v0.6.1. v0.6.2 is planned to add history list/detail and event inspection. Before exposing history reads, the local versus LAN access boundary must be addressed; v0.6.1 adds no authentication or network access control.

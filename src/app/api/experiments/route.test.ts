@@ -1,11 +1,24 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { POST } from "./route";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ExperimentHistoryStore } from "../../../experiments/experiment-history";
+import { createExperimentPostHandler } from "./experiment-post-handler";
 
 const envNames = ["AGENTLAB_MODEL_PROVIDER", "OPENAI_API_KEY", "OPENAI_MODEL", "GEMINI_API_KEY", "GEMINI_MODEL"] as const;
 const previousEnv = new Map(envNames.map((name) => [name, process.env[name]]));
+let temporaryDirectory: string;
+let historyStore: ExperimentHistoryStore;
+let handlePost: ReturnType<typeof createExperimentPostHandler>;
+
+beforeEach(async () => {
+  temporaryDirectory = await mkdtemp(join(tmpdir(), "agentlab-route-history-"));
+  historyStore = new ExperimentHistoryStore(join(temporaryDirectory, "experiments.json"));
+  handlePost = createExperimentPostHandler(historyStore);
+});
 
 function post(body: unknown): Promise<Response> {
-  return POST(new Request("http://localhost/api/experiments", {
+  return handlePost(new Request("http://localhost/api/experiments", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -20,12 +33,13 @@ async function readEvents(response: Response): Promise<Record<string, unknown>[]
     .map((block) => JSON.parse(block.split("\n").find((line) => line.startsWith("data: "))!.slice(6)) as Record<string, unknown>);
 }
 
-afterEach(() => {
+afterEach(async () => {
   for (const name of envNames) {
     const previousValue = previousEnv.get(name);
     if (previousValue === undefined) delete process.env[name];
     else process.env[name] = previousValue;
   }
+  await rm(temporaryDirectory, { recursive: true, force: true });
 });
 
 describe("POST /api/experiments provider configuration", () => {
@@ -35,11 +49,7 @@ describe("POST /api/experiments provider configuration", () => {
     process.env.OPENAI_API_KEY = "secret-test-key";
     process.env.OPENAI_MODEL = "test-model";
 
-    const response = await POST(new Request("http://localhost/api/experiments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ task: "Say hello." }),
-    }));
+    const response = await post({ task: "Say hello." });
 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({ error: "Experiment provider is not configured." });
@@ -50,11 +60,7 @@ describe("POST /api/experiments provider configuration", () => {
     process.env.OPENAI_API_KEY = "secret-test-key";
     delete process.env.OPENAI_MODEL;
 
-    const response = await POST(new Request("http://localhost/api/experiments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ task: "Say hello." }),
-    }));
+    const response = await post({ task: "Say hello." });
     const body = await response.text();
 
     expect(response.status).toBe(500);
@@ -68,11 +74,7 @@ describe("POST /api/experiments provider configuration", () => {
     process.env.GEMINI_API_KEY = "secret-gemini-test-key";
     delete process.env.GEMINI_MODEL;
 
-    const response = await POST(new Request("http://localhost/api/experiments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ task: "Say hello." }),
-    }));
+    const response = await post({ task: "Say hello." });
     const body = await response.text();
 
     expect(response.status).toBe(500);
@@ -95,6 +97,17 @@ describe("POST /api/experiments fixed scenarios", () => {
       output: { type: "text", text: "[Fake Model] Task received: Say hello." },
     }));
     expect(events.some((event) => event.type === "scenario.evaluated")).toBe(false);
+
+    const records = await historyStore.readAll();
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      schemaVersion: 1,
+      task: "Say hello.",
+      status: "completed",
+      output: { type: "text", text: "[Fake Model] Task received: Say hello." },
+    });
+    expect(records[0]).not.toHaveProperty("scenarioId");
+    expect(records[0]).not.toHaveProperty("evaluation");
   });
 
   it("runs the selected direct-text scenario with its Fake fixture", async () => {
@@ -123,6 +136,15 @@ describe("POST /api/experiments fixed scenarios", () => {
       evaluation: { passed: true },
     });
     expect(events.filter((event) => event.type === "scenario.evaluated")).toHaveLength(1);
+
+    const [record] = await historyStore.readAll();
+    expect(record.scenarioId).toBe("direct-text");
+    expect(record.evaluation).toMatchObject({ passed: true });
+    expect(record.events.at(-1)).toMatchObject({
+      type: "scenario.evaluated",
+      scenarioId: "direct-text",
+      evaluation: { passed: true },
+    });
   });
 
   it("runs the single-calculator scenario with one tool lifecycle", async () => {
@@ -149,6 +171,15 @@ describe("POST /api/experiments fixed scenarios", () => {
       evaluation: { passed: true },
     });
     expect(events.filter((event) => event.type === "scenario.evaluated")).toHaveLength(1);
+
+    const [record] = await historyStore.readAll();
+    expect(record.scenarioId).toBe("calculator-once");
+    expect(record.evaluation).toMatchObject({ passed: true });
+    expect(record.events.at(-1)).toMatchObject({
+      type: "scenario.evaluated",
+      scenarioId: "calculator-once",
+      evaluation: { passed: true },
+    });
   });
 
   it("runs the three-tool scenario within the existing execution budget", async () => {
@@ -208,6 +239,11 @@ describe("POST /api/experiments fixed scenarios", () => {
       },
     });
     expect(events.some((event) => event.type === "scenario.evaluated")).toBe(false);
+
+    const [record] = await historyStore.readAll();
+    expect(record.scenarioId).toBe("analyst-finalizer-handoff");
+    expect(record).not.toHaveProperty("evaluation");
+    expect(record.events.some((event) => event.type === "scenario.evaluated")).toBe(false);
   });
 
   it("fails safely for the unknown-tool scenario without executing a tool", async () => {
@@ -237,6 +273,59 @@ describe("POST /api/experiments fixed scenarios", () => {
       },
     });
     expect(events.filter((event) => event.type === "scenario.evaluated")).toHaveLength(1);
+
+    const records = await historyStore.readAll();
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      status: "failed",
+      scenarioId: "unknown-tool-failure",
+      evaluation: { passed: true },
+      errorMessage: "Agent görevi tamamlayamadı.",
+    });
+    expect(records[0]).not.toHaveProperty("output");
+    expect(records[0].events.at(-1)).toMatchObject({ type: "scenario.evaluated", evaluation: { passed: true } });
+  });
+
+  it("persists one terminal record after a failed experiment", async () => {
+    process.env.AGENTLAB_MODEL_PROVIDER = "fake";
+
+    const response = await post({ scenarioId: "unknown-tool-failure" });
+    const events = await readEvents(response);
+    const records = await historyStore.readAll();
+
+    expect(events.some((event) => event.type === "experiment.failed")).toBe(true);
+    expect(records).toHaveLength(1);
+    expect(records[0].status).toBe("failed");
+    expect(records[0].errorMessage).toBe("Agent görevi tamamlayamadı.");
+    expect(records[0]).not.toHaveProperty("output");
+  });
+
+  it("keeps successful execution successful if local history persistence fails", async () => {
+    process.env.AGENTLAB_MODEL_PROVIDER = "fake";
+    const privatePath = "C:\\private\\history\\experiments.json";
+    const append = vi.fn().mockRejectedValue(new Error(privatePath));
+    const failedPersistenceHandler = createExperimentPostHandler({ append });
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      const response = await failedPersistenceHandler(new Request("http://localhost/api/experiments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task: "Say hello." }),
+      }));
+      const events = await readEvents(response);
+      const serialized = JSON.stringify(events);
+
+      expect(events.some((event) => event.type === "experiment.completed")).toBe(true);
+      expect(events.some((event) => event.type === "experiment.failed")).toBe(false);
+      expect(response.status).toBe(200);
+      expect(append).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledExactlyOnceWith("AgentLab experiment history could not be saved.");
+      expect(serialized).not.toContain(privatePath);
+      expect(serialized).not.toContain("history could not be saved");
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it("keeps evaluation event data limited to the public envelope, scenario ID, and result", async () => {
