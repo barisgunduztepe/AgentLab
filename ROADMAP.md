@@ -4,7 +4,7 @@ Bu belge, AgentLab'in mevcut durumunu ve onaylanmış geliştirme sırasını ka
 
 ## Mevcut checkpoint
 
-- v0.1–v0.7 tamamlandı (ayrıntı: [CHANGELOG.md](CHANGELOG.md)). v0.8.0 Toparlama (CI, ROADMAP/CHANGELOG ayrımı, AGENTS.md, Groq temizliği) tamamlandı; tek açık madde yerel fake kayıtlarının temizliği. Sıradaki aşama **v0.8.1 Koşu metadata'sı**. Eski "v0.8 Automation" planı 2026-10-15 mimari incelemesiyle yeniden çerçevelendi; kontrollü tekrar artık v0.9.4'tedir (aşağıdaki "Yol haritası revizyonu" bölümüne bakın).
+- v0.1–v0.7 tamamlandı (ayrıntı: [CHANGELOG.md](CHANGELOG.md)). v0.8.0 Toparlama (CI, ROADMAP/CHANGELOG ayrımı, AGENTS.md, Groq temizliği) tamamlandı; tek açık madde yerel fake kayıtlarının temizliği. v0.8.1 Koşu metadata'sı uygulandı ve yalnız fake ile doğrulandı (🟡). Sıradaki aşama **v0.8.2 Model çağrı olayları ve hata kodları**. Eski "v0.8 Automation" planı 2026-10-15 mimari incelemesiyle yeniden çerçevelendi; kontrollü tekrar artık v0.9.4'tedir (aşağıdaki "Yol haritası revizyonu" bölümüne bakın).
 - v0.3 gerçek provider'larının canlı davranış doğrulaması sınırlıdır; Gemini tool-enabled isteklerinde daha önce 503 gözlenmiştir. Gerçek provider ile hiçbir akış canlı doğrulanmamıştır; bu, v0.8.4'te ele alınır.
 
 ## Yol haritası revizyonu (2026-10-15)
@@ -58,9 +58,22 @@ Kural: işi güvenilir biçimde yapabilecek en ekonomik model seçilir. Tasarım
 
 ## v0.8 — Ölçülebilir çekirdek
 
-### ⬜ v0.8.1 Koşu metadata'sı (history schema v3)
+### 🟡 v0.8.1 Koşu metadata'sı (history schema v3)
 
 **Amaç:** Her kaydın nasıl üretildiğini kanıtlamak. Provider, model, agent yapılandırma kimliği ve sürümü, senaryo, uygulama commit'i ve fake bayrağı kaydedilir; v1/v2 kayıtlar değiştirilmeden okunur. UI fake koşuları açıkça "FAKE" olarak etiketler. En küçük ve en değerli adım.
+
+**Durum:** 🟡 Uygulandı; **yalnız fake provider ile doğrulandı** (gerçek provider ile ilk doğrulama v0.8.4'te). 186 test, lint, tsc ve production build yerelde geçti; arayüz tarayıcıda fake provider ve geçici bir history klasörüyle görüldü.
+
+**Uygulama (2026-10-15):**
+- **Şema v3:** Her yeni kayıt zorunlu bir `run` bloğu taşır: `provider` (`fake`, `openai`, `gemini`), `model` (yalnız gerçek provider'larda; API anahtarı ve adres asla kaydedilmez), `architecture` (`single`, `handoff`), `agentConfigurationId` (`baseline`, `structured`, `handoff-default`), `agentConfigurationVersion` ve isteğe bağlı kısa `commit`. Karşılaştırma alanları (`comparisonId` + `configurationId`) v3'te isteğe bağlıdır ama çift olarak ve `run.agentConfigurationId` ile tutarlı olmak zorundadır. Fake bayrağı ayrı alan değil, `provider === "fake"`'ten türetilir.
+- **Uyumluluk:** v1/v2 kayıtlar değiştirilmeden okunur; dosya sürümü en yeni kaydın sürümüne yükselir ve kayıttan eski dosya sürümü reddedilir. Bilinmeyen `run` alanları kaydedilirken atılır, okunurken reddedilir. v3 dosyayı v0.8.1 öncesi uygulama sürümleri okuyamaz (`unsupported_schema`).
+- **Üretici taraf:** `createRunMetadata` provider/model özetini (`describeConfiguredProvider`, anahtarsız), `AGENT_CONFIGURATION_VERSIONS` sürümünü ve `getShortCommit`'i birleştirir. Karşılaştırmada iki koşu aynı provider, model ve commit değerini paylaşır.
+- **Arayüz:** Geçmiş listesinde sarı "FAKE" etiketi (gerçek provider'larda provider adı), ayrıntıda tam "Run" satırı, karşılaştırma görünümünde "Provider" satırı. v0.8.1 öncesi kayıtlarda etiket yoktur ve "provider not recorded" yazar; geriye dönük FAKE etiketi uydurulmaz.
+
+**Bilinen sınırlar:**
+- `commit`, çalışan koddaki **commit edilmemiş değişiklikleri yansıtmaz** ve sunucu proje dizininden başlatılmazsa (`process.cwd()` Git deposu değilse) boş kalır.
+- Canlı (SSE) deney görünümü `run` bilgisini göstermez; etiket, kayıt geçmişe yazıldıktan sonra görünür. Model çağrı olayları v0.8.2'dedir.
+- Yerel history'deki v0.8.1 öncesi kayıtlar (v0.8.0'dan kalan 4 sahte kayıt dahil) v2 olarak kalır ve etiketsizdir.
 
 ### ⬜ v0.8.2 Model çağrı olayları ve hata kodları
 
