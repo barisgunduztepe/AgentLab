@@ -10,17 +10,6 @@ export function createModelProvider(options: { fakeResponses?: readonly FakeResp
   return createProviderContext().create(options.fakeResponses);
 }
 
-export function createComparisonModelProviders(fixtures?: {
-  baseline: readonly FakeResponse[];
-  structured: readonly FakeResponse[];
-}): [ModelProvider, ModelProvider] {
-  const configuration = resolveConfiguration();
-  return [
-    createFromConfiguration(configuration, fixtures?.baseline),
-    createFromConfiguration(configuration, fixtures?.structured),
-  ];
-}
-
 export function createProviderContext() {
   const configuration = resolveConfiguration();
   const description = configuration.provider === "fake" ? { provider: configuration.provider } : { provider: configuration.provider, model: configuration.model };

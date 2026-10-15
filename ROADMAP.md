@@ -4,7 +4,7 @@ Bu belge, AgentLab'in mevcut durumunu ve onaylanmış geliştirme sırasını ka
 
 ## Mevcut checkpoint
 
-- v0.1–v0.7 tamamlandı (ayrıntı: [CHANGELOG.md](CHANGELOG.md)). **v0.8 Ölçülebilir çekirdek tamamlandı.** v0.8.4 ✅ yalnız OpenAI uyumlu adaptörün `qwen3:8b` ile canlı metin, iki turlu araç ve istemci HTTP iptali doğrulaması kapsamındadır; gerçek yanıt replay testleri eklendi. **Sıradaki aşama v0.9.1 Tek koşu servisi ve mimari kaydı.** v0.8.0 yerel fake kayıt temizliği kullanıcı işi olarak açık kalır. Eski "v0.8 Automation" planı 2026-10-15 mimari incelemesiyle yeniden çerçevelendi; kontrollü tekrar v0.9.4'tedir.
+- v0.1–v0.7 tamamlandı (ayrıntı: [CHANGELOG.md](CHANGELOG.md)). **v0.8 Ölçülebilir çekirdek tamamlandı.** v0.8.4 ✅ yalnız OpenAI uyumlu adaptörün `qwen3:8b` ile canlı metin, iki turlu araç ve istemci HTTP iptali doğrulaması kapsamındadır; gerçek yanıt replay testleri eklendi. **v0.9.1 Tek koşu servisi ve mimari kaydı tamamlandı (fake UI + yerel qwen3 servis/HTTP doğrulaması). Sıradaki aşama v0.9.2.** v0.8.0 yerel fake kayıt temizliği kullanıcı işi olarak açık kalır. Eski "v0.8 Automation" planı 2026-10-15 mimari incelemesiyle yeniden çerçevelendi; kontrollü tekrar v0.9.4'tedir.
 - OpenAI Responses ve Gemini Interactions adaptörleri canlı doğrulanmadı; 🟡 kalır (Gemini tool-enabled isteklerinde önceki 503 geçmişi vardır). `llama3.1:8b` metin görevini geçti ancak tek çağrı/yanıt araç sözleşmesinde güvenilir değildir; ayrı ✅ verilmez. Önceki v0.8.1–v0.8.3 başlıkları kendi aşamalarındaki fake/mock doğrulama durumunu korur; v0.8.4 bunları tüm provider'larda canlı doğrulanmış saymaz.
 
 ## Yol haritası revizyonu (2026-10-15)
@@ -129,9 +129,13 @@ Kural: işi güvenilir biçimde yapabilecek en ekonomik model seçilir. Tasarım
 
 ## v0.9 — Gerçek karşılaştırma
 
-### ⬜ v0.9.1 Tek koşu servisi ve mimari kaydı
+### ✅ v0.9.1 Tek koşu servisi ve mimari kaydı
 
 **Amaç:** Orkestrasyonu tek yerde toplamak. SSE ve karşılaştırma aynı koşu servisini kullanır (karşılaştırma da canlı akış verir). Agent mimarileri bir kayıttan (registry) seçilir; `"baseline" | "structured"` sabit birliği ve handoff'a özel `if`'ler kalkar. Senaryo tek tanımda toplanır: görev, evaluator, fake fixture ve karşılaştırılabilirlik bilgisi.
+
+**Durum (2026-10-15):** Ortak RunService, statik mimari kaydı, tek senaryo tanımı ve public katalog uygulandı. Compare JSON varsayılanı korunarak opt-in SSE ve canlı UI eklendi; yeni karşılaştırma kayıtları scenario.evaluated içeriyor. Kimlikler, prompt/görev/evaluator metinleri, tools ve version=1 korundu; history v3, eski v1/v2/v3 okunurluğu ve tek terminal append denemesi değişmedi.
+
+**Kanıt:** 443 otomatik test; fake UI'da beş senaryo, serbest metin/aritmetik ve dört kıyas; fake ve gerçek UI unmount'ta tek cancelled kayıt ve başlanmamış ikinci koşunun yokluğu. qwen3:8b smoke + uygulama direct-text tekil SSE, direct-text kıyas SSE ve calculator-once geçti. OpenAI/Gemini canlı doğrulanmış sayılmaz. Geliştirme Turbopack yeniden başlatmasında API 404 görüldü; canlı kabul webpack dev modunda tamamlandı. Son commit sonrası build sonucu görev raporunda belirtilir. Ayrıntı: [v0.9.1 doğrulama raporu](docs/v0.9.1-validation.md).
 
 ### ⬜ v0.9.2 İkinci araç ve ayırt edici senaryolar
 

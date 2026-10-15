@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createComparisonModelProviders, createModelProvider } from "./create-model-provider";
+import { createProviderContext, createModelProvider } from "./create-model-provider";
 import { FakeModelProvider } from "./providers/fake-model-provider";
 import { RetryingModelProvider } from "./providers/retrying-model-provider";
 
@@ -27,7 +27,8 @@ describe("createModelProvider", () => {
   it("creates two separate deterministic Fake providers from one explicit configuration", async () => {
     process.env.AGENTLAB_MODEL_PROVIDER = "fake";
     const responses = [{ type: "text" as const, text: "fixture response" }];
-    const [baseline, structured] = createComparisonModelProviders({ baseline: responses, structured: [...responses] });
+    const context = createProviderContext();
+    const [baseline, structured] = [context.create(responses), context.create([...responses])];
 
     expect(baseline).toBeInstanceOf(FakeModelProvider);
     expect(structured).toBeInstanceOf(FakeModelProvider);
@@ -46,7 +47,8 @@ describe("createModelProvider", () => {
       process.env.GEMINI_MODEL = "test-gemini-model";
     }
 
-    const [first, second] = createComparisonModelProviders();
+    const context = createProviderContext();
+    const [first, second] = [context.create(), context.create()];
     expect(first).toBeInstanceOf(RetryingModelProvider);
     expect(second).toBeInstanceOf(RetryingModelProvider);
     expect(first).not.toBe(second);

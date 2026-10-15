@@ -12,60 +12,60 @@ export function evaluateDirectText(experiment: Experiment, events: readonly Expe
   const lifecycle = summarizeToolLifecycle(events);
   const finalText = experiment.output?.text ?? "";
 
-      const passed = experiment.status === "completed" && finalText.trim().length > 0 && lifecycle.lifecycleEventCount === 0;
-      return {
-        passed,
-        reason: passed
-          ? "Experiment completed with non-empty text and no tool executions."
-          : "Expected a completed text response without tool activity.",
-      };
+  const passed = experiment.status === "completed" && finalText.trim().length > 0 && lifecycle.lifecycleEventCount === 0;
+  return {
+    passed,
+    reason: passed
+      ? "Experiment completed with non-empty text and no tool executions."
+      : "Expected a completed text response without tool activity.",
+  };
 }
 
 export function evaluateCalculatorOnce(experiment: Experiment, events: readonly ExperimentEvent[]): EvaluationResult {
   const lifecycle = summarizeToolLifecycle(events);
   const finalText = experiment.output?.text ?? "";
 
-      const passed =
-        experiment.status === "completed" &&
-        hasSuccessfulCalculatorExecutions(lifecycle, 1) &&
-        containsNumericToken(finalText, "96");
-      return {
-        passed,
-        reason: passed
-          ? "Experiment completed with one successful calculator execution and included 96."
-          : "Expected one successful calculator execution and final text containing 96.",
-      };
+  const passed =
+    experiment.status === "completed" &&
+    hasSuccessfulCalculatorExecutions(lifecycle, 1) &&
+    containsNumericToken(finalText, "96");
+  return {
+    passed,
+    reason: passed
+      ? "Experiment completed with one successful calculator execution and included 96."
+      : "Expected one successful calculator execution and final text containing 96.",
+  };
 }
 
 export function evaluateCalculatorThreeSteps(experiment: Experiment, events: readonly ExperimentEvent[]): EvaluationResult {
   const lifecycle = summarizeToolLifecycle(events);
   const finalText = experiment.output?.text ?? "";
 
-      const passed =
-        experiment.status === "completed" &&
-        hasSuccessfulCalculatorExecutions(lifecycle, 3) &&
-        ["5", "15", "24"].every((value) => containsNumericToken(finalText, value));
-      return {
-        passed,
-        reason: passed
-          ? "Experiment completed with three successful calculator executions and included 5, 15, and 24."
-          : "Expected three successful calculator executions and final text containing 5, 15, and 24.",
-      };
+  const passed =
+    experiment.status === "completed" &&
+    hasSuccessfulCalculatorExecutions(lifecycle, 3) &&
+    ["5", "15", "24"].every((value) => containsNumericToken(finalText, value));
+  return {
+    passed,
+    reason: passed
+      ? "Experiment completed with three successful calculator executions and included 5, 15, and 24."
+      : "Expected three successful calculator executions and final text containing 5, 15, and 24.",
+  };
 }
 
 export function evaluateUnknownTool(experiment: Experiment, events: readonly ExperimentEvent[]): EvaluationResult {
   const lifecycle = summarizeToolLifecycle(events);
   // The failure must be the unavailable-tool category, not any failure (e.g. a provider outage).
-      const passed =
-        experiment.status === "failed" &&
-        experiment.failureCode === "tool_unavailable" &&
-        lifecycle.lifecycleEventCount === 0;
-      return {
-        passed,
-        reason: passed
-          ? "Experiment failed safely with tool_unavailable before any tool execution."
-          : "Expected the experiment to fail with tool_unavailable before any tool execution.",
-      };
+  const passed =
+    experiment.status === "failed" &&
+    experiment.failureCode === "tool_unavailable" &&
+    lifecycle.lifecycleEventCount === 0;
+  return {
+    passed,
+    reason: passed
+      ? "Experiment failed safely with tool_unavailable before any tool execution."
+      : "Expected the experiment to fail with tool_unavailable before any tool execution.",
+  };
 }
 
 function hasSuccessfulCalculatorExecutions(lifecycle: LifecycleSummary, expectedCount: number): boolean {

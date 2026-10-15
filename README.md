@@ -75,6 +75,24 @@ or opaque signatures are outside this release's supported scope. Tool schemas us
 of JSON Schema (string/number/integer/boolean fields and typed enums); runtime validation belongs to each tool.
 The separate local/OpenAI-compatible Chat Completions adapter was added in v0.8.4.
 
+## Shared runs and live comparisons (v0.9.1)
+
+Single experiments and comparisons share one run service for execution, evaluation and one terminal
+history append attempt. A static architecture registry preserves baseline, structured and handoff-default
+identities at instruction version 1. Each scenario owns its task, evaluator, fake plan, tools and comparison
+eligibility. GET /api/experiments returns a public catalog without factories or fake responses.
+
+POST /api/experiments keeps its existing experiment-event SSE format. POST /api/experiments/compare
+keeps JSON by default; send Accept: text/event-stream for comparison.started, comparison.event,
+comparison.run.finished and comparison.finished envelopes. The UI shows two sequential runs live.
+Only nested experiment events enter history v3; comparison envelopes do not. New comparison records
+include scenario.evaluated after the terminal experiment event. Handoff remains unevaluated.
+
+Disconnecting cancels a started run; final history persistence still runs. An unstarted second run has
+no record. Storage failure does not rewrite an agent outcome or retry a model. There is no automatic
+POST reconnect/retry, new architecture selector, winner, repeated sampling or Stop button in this release.
+See [v0.9.1 validation](docs/v0.9.1-validation.md) for fake UI, qwen3 HTTP evidence and tooling limits.
+
 ## Manual local smoke (v0.8.4)
 
 Use an already installed and running loopback server with an already installed tool-capable model.
@@ -121,7 +139,7 @@ v0.8.4 is ✅ specifically for the OpenAI-compatible adapter live-validated with
 calculator turns and client HTTP cancellation. Real-response replay runs offline. This is not a blanket
 compatibility claim: llama3.1:8b failed the single-call-per-response tool contract; its cancellation scenario
 was not reached. OpenAI Responses and Gemini Interactions remain 🟡 without live verification. HTTP abort
-does not prove server-side generation stopped; reasoning is not recorded. The next milestone is **v0.9.1**.
+does not prove server-side generation stopped; reasoning is not recorded. v0.9.1 is live-validated for the shared service and HTTP paths with qwen3:8b. The next milestone is **v0.9.2**.
 Automated tests never call real model endpoints. See [ROADMAP.md](ROADMAP.md) for scope and remaining work.
 
 ## License
