@@ -12,6 +12,7 @@ An experiment lab for observing, testing and comparing how AI agents behave. Run
 - Same-scenario comparison runs of two agent configurations
 - Local experiment history with list and detail views
 - Every experiment records how it was produced (provider, model, agent configuration, commit); fake-provider runs are clearly marked
+- Model calls are observable (purpose, outcome, duration) and failed runs report a safe failure code, without storing prompts or provider error text
 - Providers: a deterministic fake provider, OpenAI and Gemini, with a retry layer
 
 ## Getting started

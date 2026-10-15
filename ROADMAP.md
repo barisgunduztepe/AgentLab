@@ -4,7 +4,7 @@ Bu belge, AgentLab'in mevcut durumunu ve onaylanmış geliştirme sırasını ka
 
 ## Mevcut checkpoint
 
-- v0.1–v0.7 tamamlandı (ayrıntı: [CHANGELOG.md](CHANGELOG.md)). v0.8.0 Toparlama (CI, ROADMAP/CHANGELOG ayrımı, AGENTS.md, Groq temizliği) tamamlandı; tek açık madde yerel fake kayıtlarının temizliği. v0.8.1 Koşu metadata'sı uygulandı ve yalnız fake ile doğrulandı (🟡). Sıradaki aşama **v0.8.2 Model çağrı olayları ve hata kodları**. Eski "v0.8 Automation" planı 2026-10-15 mimari incelemesiyle yeniden çerçevelendi; kontrollü tekrar artık v0.9.4'tedir (aşağıdaki "Yol haritası revizyonu" bölümüne bakın).
+- v0.1–v0.7 tamamlandı (ayrıntı: [CHANGELOG.md](CHANGELOG.md)). v0.8.0 Toparlama (CI, ROADMAP/CHANGELOG ayrımı, AGENTS.md, Groq temizliği) tamamlandı; tek açık madde yerel fake kayıtlarının temizliği. v0.8.1 Koşu metadata'sı ve v0.8.2 Model çağrı olayları ve hata kodları uygulandı, ikisi de yalnız fake ile doğrulandı (🟡). Sıradaki aşama **v0.8.3 Durumsuz model arayüzü** (☀️ Opus ile tasarım). Eski "v0.8 Automation" planı 2026-10-15 mimari incelemesiyle yeniden çerçevelendi; kontrollü tekrar artık v0.9.4'tedir (aşağıdaki "Yol haritası revizyonu" bölümüne bakın).
 - v0.3 gerçek provider'larının canlı davranış doğrulaması sınırlıdır; Gemini tool-enabled isteklerinde daha önce 503 gözlenmiştir. Gerçek provider ile hiçbir akış canlı doğrulanmamıştır; bu, v0.8.4'te ele alınır.
 
 ## Yol haritası revizyonu (2026-10-15)
@@ -75,13 +75,29 @@ Kural: işi güvenilir biçimde yapabilecek en ekonomik model seçilir. Tasarım
 - Canlı (SSE) deney görünümü `run` bilgisini göstermez; etiket, kayıt geçmişe yazıldıktan sonra görünür. Model çağrı olayları v0.8.2'dedir.
 - Yerel history'deki v0.8.1 öncesi kayıtlar (v0.8.0'dan kalan 4 sahte kayıt dahil) v2 olarak kalır ve etiketsizdir.
 
-### ⬜ v0.8.2 Model çağrı olayları ve hata kodları
+### 🟡 v0.8.2 Model çağrı olayları ve hata kodları
 
-**Amaç:** Model davranışını gözlemlenebilir kılmak. `model.requested` / `model.responded` olayları süre, bitiş nedeni ve (varsa) usage taşır; prompt/yanıt içeriği varsayılan olarak olaylara yazılmaz. `experiment.failed` güvenli bir `failureCode` alır (örn. `tool_unavailable`, `tool_limit`, `invalid_tool_call`, `tool_failed`, `provider_error`); evaluator nedeni bu kodla doğrular. Deterministik aritmetik yolu ayrı bir olayla görünür olur.
+**Amaç:** Model davranışını gözlemlenebilir kılmak. `model.requested` / `model.responded` olayları süre ve sonuç türü taşır; prompt/yanıt içeriği varsayılan olarak olaylara yazılmaz. `experiment.failed` güvenli bir `failureCode` alır; evaluator nedeni bu kodla doğrular. Deterministik aritmetik yolu ayrı bir olayla görünür olur.
+
+**Durum:** 🟡 Uygulandı; **yalnız fake provider ile doğrulandı** (gerçek provider ile ilk doğrulama v0.8.4'te). 232 test, lint, tsc ve production build yerelde geçti; arayüz tarayıcıda fake provider ve geçici bir history klasörüyle üç durumda görüldü (hata kodu, handoff ajan atfı, model atlandı).
+
+**Kapsam değişikliği:** Plandaki "bitiş nedeni ve usage" bu milestone'da **yoktur**: `ModelProvider` arayüzü yalnızca metin/araç çağrısı döndürüyor ve bu bilgileri vermiyor. Arayüzü iki kez değiştirmemek için bunlar v0.8.3'e (durumsuz model arayüzü) taşındı.
+
+**Uygulama (2026-10-15, dört adım):**
+- **Hata kodları:** `AgentFailure` ve `FailureCode` (`tool_unavailable`, `tool_limit`, `invalid_tool_call`, `tool_failed`, `provider_error`, `invalid_handoff`, `unknown`). `SingleAgent` araç ve provider hatalarını sınıflandırır (provider hataları `provider_error`; ayrıntı yalnızca iç `cause` olarak kalır), handoff iç agent'ın kodunu taşır. `Experiment.failureCode` ve `experiment.failed` olayındaki `failureCode` (geçmişte isteğe bağlı: eski kayıtlarda yok) eklendi. Kullanıcıya gösterilen mesaj genel kalır. unknown-tool senaryosunun evaluator'ı artık yalnızca `tool_unavailable` ile biten başarısızlığı geçirir (provider kesintisi gibi başka nedenle başarısızlık FAIL olur).
+- **Model çağrı olayları:** `model.requested` (`initial` veya `after_tool`) ve `model.responded` (`text`, `tool_call` veya `error`, `durationMs`). Süre, `RetryingModelProvider`'ın yeniden denemelerini ve bekleme sürelerini de kapsar (deneme sayısı bilinmez). Handoff'ta her olay `agentId` ile Analyst veya Finalizer'a atfedilir. Olaylar, geçmişte doğrulanır ve saklanır; arayüzde etiketlenir.
+- **Atlanan model:** Salt aritmetik görevler modele gitmeden hesaplanır; bu artık `model.skipped` (`reason: deterministic_arithmetic`) olayıyla görünür, böylece model çağrısı olmayan koşu eksik ölçüm sanılmaz.
+- **Gizlilik:** Hiçbir olay prompt, yanıt, araç girdi/çıktısı, çağrı kimliği veya provider hata metni taşımaz; testler bunu doğrular.
+
+**Bilinen sınırlar:**
+- v0.8.2 öncesi kayıtlarda model olayları ve hata kodu yoktur; bu kayıtlar değiştirilmedi.
+- Olaylarla zenginleşen v3 kayıtları, bu sürümden eski uygulama sürümleri tarafından okunamayabilir (bilinmeyen olay türü).
+- Mevcut `agent.lifecycle` (`agent_execution_failed`) ve `handoff.failed` (`invalid_handoff`) kodları ayrı bir sözlük olarak durur; deney düzeyindeki `failureCode` bunlardan bağımsızdır.
+- Süreler fake provider'da ~0 ms çıkar; anlamlı süre verisi v0.8.4'te gerçek provider ile gelir.
 
 ### ⬜ v0.8.3 Durumsuz model arayüzü
 
-**Amaç:** Konuşmayı agent'ın sahiplenmesi. `complete({ messages, tools, signal })` biçiminde durumsuz bir sözleşme; mesaj geçmişi agent'ta tutulur. Araçlar JSON şemasıyla tanımlanır ve provider'lar şemayı genel olarak çevirir (calculator'a özel kopyalar kalkar). `AbortSignal` uçtan uca taşınır; SSE istemcisi ayrılınca deney durur. Tüm provider'lar için ortak sözleşme testi eklenir. Transcript'in kalıcı kaydı varsayılan olarak kapalıdır (mevcut veri ilkesi). Kapsam büyürse v0.8.3a (arayüz + agent) ve v0.8.3b (araç şeması + iptal) olarak bölünür.
+**Amaç:** Konuşmayı agent'ın sahiplenmesi. `complete({ messages, tools, signal })` biçiminde durumsuz bir sözleşme; mesaj geçmişi agent'ta tutulur. Yanıt ayrıca **bitiş nedeni** ve (varsa) **usage** bilgisini taşır ve bunlar `model.responded` olayına eklenir (v0.8.2'de arayüz sağlamadığı için ertelendi). Araçlar JSON şemasıyla tanımlanır ve provider'lar şemayı genel olarak çevirir (calculator'a özel kopyalar kalkar). `AbortSignal` uçtan uca taşınır; SSE istemcisi ayrılınca deney durur. Tüm provider'lar için ortak sözleşme testi eklenir. Transcript'in kalıcı kaydı varsayılan olarak kapalıdır (mevcut veri ilkesi). Kapsam büyürse v0.8.3a (arayüz + agent) ve v0.8.3b (araç şeması + iptal) olarak bölünür.
 
 ### ⬜ v0.8.4 İlk gerçek provider ve canlı doğrulama
 
