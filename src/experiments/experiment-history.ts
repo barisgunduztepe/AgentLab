@@ -3,6 +3,8 @@ import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, posix, win32 } from "node:path";
 import { isFailureCode } from "../agent/agent-failure";
+import { FINISH_REASONS, type FinishReason } from "../agent/model-completion";
+import { copyModelUsage, isModelUsage } from "../agent/model-contract";
 import type { EvaluationResult, ExperimentEvent } from "./types";
 
 export type HistorySchemaVersion = 1 | 2 | 3;
@@ -381,7 +383,13 @@ function isValidEvent(value: unknown, strictKeys: boolean): value is ExperimentE
         value.reason === "deterministic_arithmetic" &&
         (value.agentId === undefined || value.agentId === "analyst" || value.agentId === "finalizer");
     case "model.responded":
-      return hasKeys(value.agentId === undefined ? ["outcome", "durationMs"] : ["outcome", "durationMs", "agentId"]) &&
+      return hasKeys([
+          "outcome", "durationMs", ...(value.agentId === undefined ? [] : ["agentId"]),
+          ...(Object.hasOwn(value, "finishReason") ? ["finishReason"] : []),
+          ...(Object.hasOwn(value, "usage") ? ["usage"] : []),
+        ]) &&
+        (!Object.hasOwn(value, "finishReason") || FINISH_REASONS.includes(value.finishReason as FinishReason)) &&
+        (!Object.hasOwn(value, "usage") || isModelUsage(value.usage, strictKeys)) &&
         (value.outcome === "text" || value.outcome === "tool_call" || value.outcome === "error") &&
         typeof value.durationMs === "number" && Number.isFinite(value.durationMs) && value.durationMs >= 0 &&
         (value.agentId === undefined || value.agentId === "analyst" || value.agentId === "finalizer");
@@ -444,6 +452,8 @@ function sanitizeEvent(event: ExperimentEvent, strictKeys: boolean): ExperimentE
         type: event.type,
         outcome: event.outcome,
         durationMs: event.durationMs,
+        ...(event.finishReason === undefined ? {} : { finishReason: event.finishReason }),
+        ...(event.usage === undefined ? {} : { usage: copyModelUsage(event.usage) }),
         ...(event.agentId ? { agentId: event.agentId } : {}),
       };
     case "agent.lifecycle":

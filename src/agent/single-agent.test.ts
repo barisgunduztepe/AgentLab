@@ -120,4 +120,27 @@ describe("SingleAgent stateless loop", () => {
     await expect(new SingleAgent(scripted([{ ...text(), finishReason: "unknown", usage: { inputTokens: 1, outputTokens: 2, totalTokens: null } }])).run("Task"))
       .resolves.toEqual({ type: "text", text: "Done." });
   });
+  it("reports final-attempt usage and one logical duration including retry backoff", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(0);
+    try {
+      const usage = { inputTokens: 2, outputTokens: 3, totalTokens: 6 };
+      const complete = vi.fn().mockRejectedValueOnce(new RetryableProviderError()).mockResolvedValueOnce({ ...text(), usage });
+      const provider = new RetryingModelProvider({ complete }, { sleep: async (ms) => { vi.setSystemTime(Date.now() + ms); }, random: () => 0.5 });
+      const signals: ModelCallSignal[] = [];
+      const result = await new SingleAgent(provider).run("Task", undefined, (s) => signals.push(s));
+      expect(result).toEqual({ type: "text", text: "Done." });
+      expect(signals).toEqual([
+        { type: "model.requested", purpose: "initial" },
+        { type: "model.responded", outcome: "text", durationMs: 250, finishReason: "stop", usage },
+      ]);
+    } finally { vi.useRealTimers(); }
+  });
+  it("copies only approved usage fields to events", async () => {
+    const signals: ModelCallSignal[] = [];
+    const usage = { inputTokens: 0, outputTokens: 1, totalTokens: 1, private: "private provider text" };
+    await new SingleAgent({ complete: async () => ({ ...text(), usage }) }).run("Task", undefined, (s) => signals.push(s));
+    expect(signals.at(-1)).toMatchObject({ usage: { inputTokens: 0, outputTokens: 1, totalTokens: 1 } });
+    expect(JSON.stringify(signals)).not.toContain("private");
+  });
+
 });

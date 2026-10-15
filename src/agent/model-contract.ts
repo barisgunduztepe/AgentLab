@@ -83,12 +83,21 @@ export function modelUsage(input: unknown, output: unknown, total: unknown): Mod
   return Object.values(usage).every((value) => value === null) ? null : usage;
 }
 
+export function isModelUsage(value: unknown, strictKeys = true): value is ModelUsage {
+  if (value === null) return true;
+  if (!isRecord(value)) return false;
+  const keys = ["inputTokens", "outputTokens", "totalTokens"];
+  return (!strictKeys || Object.keys(value).length === 3) && keys.every((key) =>
+    value[key] === null || (typeof value[key] === "number" && Number.isSafeInteger(value[key]) && value[key] >= 0));
+}
+
+export function copyModelUsage(usage: ModelUsage): ModelUsage {
+  return usage === null ? null : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, totalTokens: usage.totalTokens };
+}
+
 export function validateResponse(response: CompletionResponse): void {
   if (!FINISH_REASONS.includes(response.finishReason)) throw new Error("Invalid finish reason.");
-  if (response.usage !== null) {
-    if (!isRecord(response.usage)) throw new Error("Invalid model usage.");
-    modelUsage(response.usage.inputTokens, response.usage.outputTokens, response.usage.totalTokens);
-  }
+  if (!isModelUsage(response.usage, false)) throw new Error("Invalid model usage.");
   if (response.type === "tool_call") {
     readToolCall(response.call?.callId, response.call?.toolName, response.call?.arguments);
     if (response.finishReason !== "tool_call") throw new Error("Inconsistent model response.");

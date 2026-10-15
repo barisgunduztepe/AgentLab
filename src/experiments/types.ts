@@ -1,4 +1,5 @@
 import type { FailureCode } from "../agent/agent-failure";
+import type { FinishReason, ModelUsage } from "../agent/model-provider";
 
 export type { FailureCode };
 
@@ -58,6 +59,9 @@ export type ExperimentEvent =
       type: "model.responded";
       outcome: "text" | "tool_call" | "error";
       durationMs: number;
+      /** Absent in records written before v0.8.3; explicit unknown/null in new events. */
+      finishReason?: FinishReason;
+      usage?: ModelUsage;
       agentId?: ExperimentAgentId;
     })
   | (ExperimentEventBase & { type: "model.skipped"; reason: "deterministic_arithmetic"; agentId?: ExperimentAgentId })

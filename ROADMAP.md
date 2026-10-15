@@ -4,7 +4,7 @@ Bu belge, AgentLab'in mevcut durumunu ve onaylanmış geliştirme sırasını ka
 
 ## Mevcut checkpoint
 
-- v0.1–v0.7 tamamlandı (ayrıntı: [CHANGELOG.md](CHANGELOG.md)). v0.8.0 Toparlama (CI, ROADMAP/CHANGELOG ayrımı, AGENTS.md, Groq temizliği) tamamlandı; tek açık madde yerel fake kayıtlarının temizliği. v0.8.1 Koşu metadata'sı ve v0.8.2 Model çağrı olayları ve hata kodları uygulandı, ikisi de yalnız fake ile doğrulandı (🟡). Sıradaki aşama **v0.8.3 Durumsuz model arayüzü** (☀️ Opus ile tasarım). Eski "v0.8 Automation" planı 2026-10-15 mimari incelemesiyle yeniden çerçevelendi; kontrollü tekrar artık v0.9.4'tedir (aşağıdaki "Yol haritası revizyonu" bölümüne bakın).
+- v0.1–v0.7 tamamlandı (ayrıntı: [CHANGELOG.md](CHANGELOG.md)). v0.8.0 Toparlama (CI, ROADMAP/CHANGELOG ayrımı, AGENTS.md, Groq temizliği) tamamlandı; tek açık madde yerel fake kayıtlarının temizliği. v0.8.1 Koşu metadata'sı ve v0.8.2 Model çağrı olayları ve hata kodları uygulandı, ikisi de yalnız fake ile doğrulandı (🟡). v0.8.3 Durumsuz model arayüzü de uygulandı; yalnız fake/mock ile doğrulandı (🟡). Sıradaki aşama **v0.8.4 İlk gerçek provider ve canlı doğrulama**. Eski "v0.8 Automation" planı 2026-10-15 mimari incelemesiyle yeniden çerçevelendi; kontrollü tekrar artık v0.9.4'tedir (aşağıdaki "Yol haritası revizyonu" bölümüne bakın).
 - v0.3 gerçek provider'larının canlı davranış doğrulaması sınırlıdır; Gemini tool-enabled isteklerinde daha önce 503 gözlenmiştir. Gerçek provider ile hiçbir akış canlı doğrulanmamıştır; bu, v0.8.4'te ele alınır.
 
 ## Yol haritası revizyonu (2026-10-15)
@@ -95,9 +95,21 @@ Kural: işi güvenilir biçimde yapabilecek en ekonomik model seçilir. Tasarım
 - Mevcut `agent.lifecycle` (`agent_execution_failed`) ve `handoff.failed` (`invalid_handoff`) kodları ayrı bir sözlük olarak durur; deney düzeyindeki `failureCode` bunlardan bağımsızdır.
 - Süreler fake provider'da ~0 ms çıkar; anlamlı süre verisi v0.8.4'te gerçek provider ile gelir.
 
-### ⬜ v0.8.3 Durumsuz model arayüzü
+### 🟡 v0.8.3 Durumsuz model arayüzü
 
 **Amaç:** Konuşmayı agent'ın sahiplenmesi. `complete({ messages, tools, signal })` biçiminde durumsuz bir sözleşme; mesaj geçmişi agent'ta tutulur. Yanıt ayrıca **bitiş nedeni** ve (varsa) **usage** bilgisini taşır ve bunlar `model.responded` olayına eklenir (v0.8.2'de arayüz sağlamadığı için ertelendi). Araçlar JSON şemasıyla tanımlanır ve provider'lar şemayı genel olarak çevirir (calculator'a özel kopyalar kalkar). `AbortSignal` uçtan uca taşınır; SSE istemcisi ayrılınca deney durur. Tüm provider'lar için ortak sözleşme testi eklenir. Transcript'in kalıcı kaydı varsayılan olarak kapalıdır (mevcut veri ilkesi). Kapsam büyürse v0.8.3a (arayüz + agent) ve v0.8.3b (araç şeması + iptal) olarak bölünür.
+
+**Durum:** 🟡 Uygulandı; **yalnız fake/mock ile doğrulandı**. Gerçek API çağrısı yapılmadı. Canlı gerçek-provider doğrulaması v0.8.4'te; OpenAI ve Gemini adaptörleri ayrıca kendi canlı doğrulamalarını bekler.
+
+**Uygulama (2026-10-15, dört commit):**
+- Ortak mesaj/yanıt sözleşmesi ve sınırlı JSON Schema araç tanımı; deney çıktısı model ölçümlerinden ayrıldı. Calculator nesne girdisini kendisi doğrular.
+- Agent her model çağrısına tam konuşma snapshot'ını verir. OpenAI Responses ve Gemini Interactions korunur; previous/pending konuşma alanları kalktı. Fake script adımını transcript'ten belirler. Ortak testler gerçek SDK + sahte fetch ile adaptörleri ve retry sarmalayıcısını doğrular.
+- AbortSignal agent, araç, provider HTTP isteği ve retry beklemesine taşınır. SSE reader iptali ve request abort koşuyu durdurur; `failed/cancelled` kaydı yazılır. Karşılaştırmanın başlanmamış ikinci koşusu oluşturulmaz. UI component kapanışında aktif fetch'ler abort edilir; Durdur düğmesi eklenmedi.
+- `model.responded` bitiş nedeni ve usage taşır. Eksik/eski, bilinmeyen ve sıfır değerler ayrılır. History v3 validator/sanitizer yeni alanları güvenli biçimde işler; eski v1/v2/v3 kayıtları okunur. Mevcut prompt metinleri ve konfigürasyon sürümleri korunur.
+
+**Doğrulama:** 339 test; lint, `next typegen`, tsc. Fake calculator koşusu ve baseline/structured karşılaştırması tarayıcıda geçici history ile PASS; canlı akış ve kayıt ayrıntısında finish/usage görüldü. Production build ve commit bazlı doğrulama ayrıntıları: [v0.8.3 doğrulama raporu](docs/v0.8.3-validation.md).
+
+**Sınırlar:** Eski uygulamanın yeni ölçüm alanlarını/iptal kodunu okuması garanti edilmez. Transcript kaydı açılmadı. Usage yalnız yanıt alınan denemeye aittir; başarısız retry tüketimi ve maliyet hesaplanmaz. Senkron araç yürütmesi ortasında zorla kesme yoktur. Özel reasoning replay/opaque signature isteyen modeller kapsam dışıdır. OpenAI uyumlu yerel adaptör v0.8.4'tedir.
 
 ### ⬜ v0.8.4 İlk gerçek provider ve canlı doğrulama
 

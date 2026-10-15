@@ -454,6 +454,44 @@ describe("ExperimentHistoryStore", () => {
     });
   });
 
+  describe("v0.8.3 measurements in history v3", () => {
+    const at = "2026-10-15T00:00:00.000Z";
+    const recordWith = (measurements: object): ExperimentHistoryRecord => ({
+      ...historyRecord("metrics", "completed", at), schemaVersion: 3,
+      run: { provider: "fake", architecture: "single", agentConfigurationId: "baseline", agentConfigurationVersion: 1 },
+      events: [{ experimentId: "metrics", occurredAt: at, type: "model.responded", outcome: "text", durationMs: 1, ...measurements }],
+    });
+    it.each([
+      {}, { finishReason: "unknown", usage: null },
+      { finishReason: "stop", usage: { inputTokens: 0, outputTokens: 2, totalTokens: null } },
+      { finishReason: "tool_call", usage: { inputTokens: 1, outputTokens: 2, totalTokens: 4 } },
+    ])("round-trips absent, unknown, partial and measured metadata: %j", async (measurements) => {
+      const record = recordWith(measurements);
+      await store.append(record); expect(await store.getById("metrics")).toEqual(record);
+    });
+    it.each([
+      { finishReason: "invented" }, { finishReason: null }, { usage: {} },
+      { usage: { inputTokens: -1, outputTokens: 2, totalTokens: null } },
+      { usage: { inputTokens: 1.5, outputTokens: 2, totalTokens: 4 } },
+      { usage: { inputTokens: 1, outputTokens: 2 } },
+      { usage: { inputTokens: "0", outputTokens: 2, totalTokens: 4 } },
+      { usage: { inputTokens: 1, outputTokens: 2, totalTokens: Number.MAX_SAFE_INTEGER + 1 } },
+    ])("rejects malformed measurements on both save and read: %j", async (measurements) => {
+      const record = recordWith(measurements);
+      expect(() => store.append(record)).toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
+      await writeFile(store.filePath, JSON.stringify({ schemaVersion: 3, records: [record] }), "utf8");
+      await expect(store.readAll()).rejects.toMatchObject({ code: "invalid_snapshot" });
+    });
+    it("drops nested private fields when saving and rejects them when reading", async () => {
+      const record = recordWith({ finishReason: "stop", usage: { inputTokens: 0, outputTokens: 1, totalTokens: 1, prompt: "private prompt" }, raw: "private response" });
+      await store.append(record);
+      const raw = await readFile(store.filePath, "utf8"); expect(raw).not.toContain("private");
+      expect((await store.getById("metrics"))?.events[0]).toMatchObject({ usage: { inputTokens: 0, outputTokens: 1, totalTokens: 1 } });
+      await writeFile(store.filePath, JSON.stringify({ schemaVersion: 3, records: [record] }), "utf8");
+      await expect(store.readAll()).rejects.toMatchObject({ code: "invalid_snapshot" });
+    });
+  });
+
   describe("failure codes on experiment.failed events", () => {
     const failedRecord = (failureCode?: unknown): ExperimentHistoryRecord => {
       const endedAt = "2026-10-01T00:00:01.000Z";
@@ -472,11 +510,11 @@ describe("ExperimentHistoryStore", () => {
       };
     };
 
-    it("keeps a valid failure code when saving and reading", async () => {
-      await store.append(failedRecord("tool_unavailable"));
+    it.each(["tool_unavailable", "cancelled"])("keeps a valid failure code when saving and reading: %s", async (failureCode) => {
+      await store.append(failedRecord(failureCode));
 
       const [saved] = await store.readAll();
-      expect(saved.events[0]).toMatchObject({ type: "experiment.failed", failureCode: "tool_unavailable" });
+      expect(saved.events[0]).toMatchObject({ type: "experiment.failed", failureCode });
     });
 
     it("still reads failed events saved before failure codes existed", async () => {

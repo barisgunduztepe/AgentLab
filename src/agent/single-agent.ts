@@ -1,6 +1,6 @@
 import { throwIfCancelled } from "./cancellation";
 import { AgentFailure } from "./agent-failure";
-import type { ModelProvider, ModelResponse, ModelMessage } from "./model-provider";
+import type { ModelProvider, ModelResponse, ModelMessage, FinishReason, ModelUsage } from "./model-provider";
 import type { Tool } from "../tools/tool";
 
 const MAX_CALCULATOR_NESTING_DEPTH = 32;
@@ -19,12 +19,12 @@ export type ToolLifecycleSignal =
  */
 export type ModelCallSignal =
   | { type: "model.requested"; purpose: "initial" | "after_tool" }
-  | { type: "model.responded"; outcome: "text" | "tool_call" | "error"; durationMs: number }
+  | { type: "model.responded"; outcome: "text" | "tool_call" | "error"; durationMs: number; finishReason: FinishReason; usage: ModelUsage }
   /** The task was solved without asking the model (a plain arithmetic task goes straight to the calculator tool). */
   | { type: "model.skipped"; reason: "deterministic_arithmetic" };
 
 import type { ExperimentOutput } from "../experiments/types";
-import { readToolCall, validateRequest, validateResponse } from "./model-contract";
+import { copyModelUsage, readToolCall, validateRequest, validateResponse } from "./model-contract";
 
 export class SingleAgent {
   constructor(
@@ -113,12 +113,13 @@ async function callProvider(purpose: "initial" | "after_tool", operation: () => 
     throwIfCancelled(signal);
     validateResponse(response);
   } catch (cause) {
-    onModelCall?.({ type: "model.responded", outcome: "error", durationMs: Date.now() - started });
+    onModelCall?.({ type: "model.responded", outcome: "error", durationMs: Date.now() - started, finishReason: "unknown", usage: null });
     throwIfCancelled(signal);
     if (cause instanceof AgentFailure && cause.failureCode === "invalid_tool_call") throw cause;
     throw new AgentFailure("provider_error", { cause });
   }
-  onModelCall?.({ type: "model.responded", outcome: response.type, durationMs: Date.now() - started });
+  onModelCall?.({ type: "model.responded", outcome: response.type, durationMs: Date.now() - started,
+    finishReason: response.finishReason, usage: copyModelUsage(response.usage) });
   return response;
 }
 

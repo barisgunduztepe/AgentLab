@@ -9,6 +9,7 @@ import type {
 } from "@/experiments/experiment-history";
 import { describeRunForDisplay } from "@/experiments/run-label";
 import { SCENARIOS } from "@/experiments/scenarios";
+import { modelMeasurementLabel } from "@/experiments/model-event-label";
 
 type UiStatus = ExperimentStatus | "idle";
 type ComparisonResult = {
@@ -77,6 +78,7 @@ function eventLabel(event: ExperimentEvent): string {
   }
 
   if (event.type === "experiment.failed" && event.failureCode) {
+    if (event.failureCode === "cancelled") return "İptal edildi — cancelled";
     return `${event.type} — ${event.failureCode}`;
   }
 
@@ -85,7 +87,7 @@ function eventLabel(event: ExperimentEvent): string {
     const detail = event.type === "model.requested"
       ? event.purpose
       : event.type === "model.responded"
-        ? `${event.outcome} · ${event.durationMs} ms`
+        ? `${event.outcome} · ${event.durationMs} ms · ${modelMeasurementLabel(event)}`
         : "no model call (deterministic arithmetic)";
     return `${event.type} — ${agent}${detail}`;
   }
@@ -549,7 +551,7 @@ export default function Home() {
       >
         <h2 style={{ margin: "0 0 12px", fontSize: 20 }}>Experiment status</h2>
         <p role="status" style={{ margin: 0, fontWeight: 600 }}>
-          {statusLabel(status)}
+          {events.some((event) => event.type === "experiment.failed" && event.failureCode === "cancelled") ? "İptal edildi" : statusLabel(status)}
         </p>
         {(startedAt || endedAt || durationMs !== null) && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 20px", color: "#536078" }}>
@@ -722,7 +724,7 @@ export default function Home() {
                 </p>
                 <p style={{ margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{historicalExperiment.task}</p>
                 <p style={{ margin: "0 0 8px", color: "#536078" }}>
-                  {historicalExperiment.status} · {new Date(historicalExperiment.startedAt).toLocaleString()} – {new Date(historicalExperiment.endedAt).toLocaleString()} · {historicalExperiment.durationMs} ms
+                  {historicalExperiment.events.some((event) => event.type === "experiment.failed" && event.failureCode === "cancelled") ? "İptal edildi" : historicalExperiment.status} · {new Date(historicalExperiment.startedAt).toLocaleString()} – {new Date(historicalExperiment.endedAt).toLocaleString()} · {historicalExperiment.durationMs} ms
                 </p>
                 {historicalExperiment.output ? (
                   <pre style={{ margin: "8px 0", padding: 12, borderRadius: 6, background: "#f4f6fa", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit" }}>
