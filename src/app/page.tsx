@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { EvaluationResult, ExperimentEvent, ExperimentOutput, ExperimentStatus } from "@/experiments/types";
-import type { ExperimentHistoryRecord, ExperimentHistorySummary } from "@/experiments/experiment-history";
+import type {
+  ExperimentHistoryRecord,
+  ExperimentHistorySummary,
+  ExperimentRunMetadata,
+} from "@/experiments/experiment-history";
+import { describeRunForDisplay } from "@/experiments/run-label";
 import { SCENARIOS } from "@/experiments/scenarios";
 
 type UiStatus = ExperimentStatus | "idle";
@@ -14,10 +19,35 @@ type ComparisonResult = {
     id: string;
     status: "completed" | "failed";
     durationMs?: number;
+    run: ExperimentRunMetadata;
     evaluation?: EvaluationResult;
     historySaved: boolean;
   }[];
 };
+
+/** Short provider marker; fake runs are highlighted so they are never mistaken for real model runs. */
+function RunBadge({ run }: { run?: ExperimentRunMetadata }) {
+  const label = describeRunForDisplay(run);
+  if (!label.badge) return null;
+
+  return (
+    <span
+      title={label.description}
+      style={{
+        marginLeft: 6,
+        padding: "1px 6px",
+        borderRadius: 4,
+        fontSize: 12,
+        fontWeight: 700,
+        color: label.isFake ? "#7a4b00" : "#1d4ed8",
+        background: label.isFake ? "#fff4d6" : "#e8efff",
+        border: `1px solid ${label.isFake ? "#e5c36a" : "#b9ccf5"}`,
+      }}
+    >
+      {label.badge}
+    </span>
+  );
+}
 
 function statusLabel(status: UiStatus): string {
   switch (status) {
@@ -440,6 +470,10 @@ export default function Home() {
                   </tbody>
                 </table>
                 <p style={{ margin: "6px 0 0", color: "#536078" }}>
+                  Provider: {describeRunForDisplay(comparisonResult.runs[0]?.run).provider}
+                  <RunBadge run={comparisonResult.runs[0]?.run} />
+                </p>
+                <p style={{ margin: "6px 0 0", color: "#536078" }}>
                   Single run per configuration; duration depends on network and provider latency, so this is not a statistical result. Cost is not measured.
                 </p>
               </div>
@@ -612,6 +646,7 @@ export default function Home() {
                     }}
                   >
                     <strong>{scenario ? scenario.title : summary.scenarioId ?? "Custom task"}</strong>
+                    <RunBadge run={summary.run} />
                     {summary.configurationId && <span> · {summary.configurationId}</span>}
                     <span> · {summary.status} · {new Date(summary.endedAt).toLocaleString()}</span>
                     {summary.evaluation && <span> · {summary.evaluation.passed ? "PASS" : "FAIL"}</span>}
@@ -643,6 +678,10 @@ export default function Home() {
                     Comparison {historicalExperiment.comparisonId} · {historicalExperiment.configurationId}
                   </p>
                 )}
+                <p style={{ margin: "0 0 8px", color: "#536078" }}>
+                  Run: {describeRunForDisplay(historicalExperiment.run).description}
+                  <RunBadge run={historicalExperiment.run} />
+                </p>
                 <p style={{ margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{historicalExperiment.task}</p>
                 <p style={{ margin: "0 0 8px", color: "#536078" }}>
                   {historicalExperiment.status} · {new Date(historicalExperiment.startedAt).toLocaleString()} – {new Date(historicalExperiment.endedAt).toLocaleString()} · {historicalExperiment.durationMs} ms

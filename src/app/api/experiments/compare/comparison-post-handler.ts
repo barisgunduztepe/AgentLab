@@ -28,6 +28,7 @@ interface ComparisonRunResult {
   id: string;
   status: "completed" | "failed";
   durationMs?: number;
+  run: ExperimentRunMetadata;
   output?: { type: "text"; text: string };
   errorMessage?: string;
   evaluation?: EvaluationResult;
@@ -96,6 +97,7 @@ export function createComparisonPostHandler(
       const agent = new SingleAgent(providers[index], tools, configurationId);
       const experiment = await runExperiment(scenario.task, agent, (event) => events.push(event));
       const evaluation = evaluateScenario(scenarioId, experiment, events);
+      const run = describeRun(configurationId);
       let historySaved = false;
       try {
         await historyStore.append(toExperimentHistoryRecord(
@@ -103,7 +105,7 @@ export function createComparisonPostHandler(
           scenarioId,
           evaluation,
           events,
-          describeRun(configurationId),
+          run,
           { comparisonId, configurationId },
         ));
         historySaved = true;
@@ -111,7 +113,7 @@ export function createComparisonPostHandler(
         console.error("AgentLab experiment history could not be saved.");
       }
 
-      runs.push(toComparisonRunResult(configurationId, experiment, evaluation, historySaved));
+      runs.push(toComparisonRunResult(configurationId, experiment, evaluation, historySaved, run));
     }
 
     return Response.json({ comparisonId, scenarioId, runs });
@@ -123,10 +125,12 @@ function toComparisonRunResult(
   experiment: Experiment,
   evaluation: EvaluationResult | undefined,
   historySaved: boolean,
+  run: ExperimentRunMetadata,
 ): ComparisonRunResult {
   return {
     configurationId,
     id: experiment.id,
+    run,
     status: experiment.status === "running" ? "failed" : experiment.status,
     ...(experiment.durationMs === undefined ? {} : { durationMs: experiment.durationMs }),
     ...(experiment.status === "completed" && experiment.output ? { output: experiment.output } : {}),

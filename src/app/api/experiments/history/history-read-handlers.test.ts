@@ -72,6 +72,24 @@ describe("history read handlers", () => {
     await expect(response.json()).resolves.toEqual(saved);
   });
 
+  it("returns run metadata in the list and detail for v3 records, and omits it for older records", async () => {
+    const run = {
+      provider: "fake" as const,
+      architecture: "single" as const,
+      agentConfigurationId: "baseline" as const,
+      agentConfigurationVersion: 1,
+    };
+    const current = { ...record("current", "2026-10-01T00:00:02.000Z"), schemaVersion: 3 as const, run };
+    await store.append(record("legacy", "2026-10-01T00:00:01.000Z"));
+    await store.append(current);
+
+    const list = await (await handlers.list(localRequest())).json();
+    expect(list.experiments.find((item: { id: string }) => item.id === "current")).toMatchObject({ run });
+    expect(list.experiments.find((item: { id: string }) => item.id === "legacy")).not.toHaveProperty("run");
+
+    await expect((await handlers.detail(localRequest(), "current")).json()).resolves.toEqual(current);
+  });
+
   it("returns a safe 404 for an unknown ID", async () => {
     const response = await handlers.detail(localRequest(), "missing-id");
 

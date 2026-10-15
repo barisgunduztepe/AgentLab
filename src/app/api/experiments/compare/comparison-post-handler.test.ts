@@ -102,6 +102,8 @@ describe("POST /api/experiments/compare", () => {
       provider: "fake", architecture: "single", agentConfigurationId: "structured", agentConfigurationVersion: 1,
     });
     expect({ ...baselineRun, agentConfigurationId: "x" }).toEqual({ ...structuredRun, agentConfigurationId: "x" });
+    // The response reports the same run metadata that was saved, so the UI can label the comparison.
+    expect(body.runs.map((run: { run: unknown }) => run.run)).toEqual([baselineRun, structuredRun]);
   });
 
   it("executes structured after a baseline failure and rejects scenarios outside the fixed comparable set", async () => {
