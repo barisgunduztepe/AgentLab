@@ -32,8 +32,8 @@ describe("createModelProvider", () => {
     expect(baseline).toBeInstanceOf(FakeModelProvider);
     expect(structured).toBeInstanceOf(FakeModelProvider);
     expect(baseline).not.toBe(structured);
-    await expect(baseline.generateResponse("same task")).resolves.toEqual(responses[0]);
-    await expect(structured.generateResponse("same task")).resolves.toEqual(responses[0]);
+    await expect(baseline.complete({ messages: [{ role: "user", text: "same task" }], tools: [] })).resolves.toMatchObject(responses[0]);
+    await expect(structured.complete({ messages: [{ role: "user", text: "same task" }], tools: [] })).resolves.toMatchObject(responses[0]);
   });
 
   it.each(["openai", "gemini"] as const)("resolves %s model configuration once and creates isolated retry-wrapped providers", (provider) => {
@@ -60,7 +60,7 @@ describe("createModelProvider", () => {
     process.env.AGENTLAB_MODEL_PROVIDER = "fake";
     const fakeResponses = [{ type: "text" as const, text: "Scenario fixture response." }];
 
-    await expect(createModelProvider({ fakeResponses }).generateResponse("Scenario task.")).resolves.toEqual(
+    await expect(createModelProvider({ fakeResponses }).complete({ messages: [{ role: "user", text: "Scenario task." }], tools: [] })).resolves.toMatchObject(
       fakeResponses[0],
     );
   });

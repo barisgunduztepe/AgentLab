@@ -1,5 +1,5 @@
 import { AgentFailure, failureCodeOf } from "./agent-failure";
-import type { ModelResponse } from "./model-provider";
+import type { ExperimentOutput } from "../experiments/types";
 import type { ModelCallSignal, ToolLifecycleSignal } from "./single-agent";
 import { SingleAgent } from "./single-agent";
 
@@ -37,14 +37,14 @@ export class TwoAgentHandoffRunner {
     task: string,
     onToolLifecycle?: (signal: ToolLifecycleSignal & { agentId?: AgentId }) => void,
     onLifecycle?: (signal: AgentSignal) => void,
-  ): Promise<Extract<ModelResponse, { type: "text" }>> {
+  ): Promise<ExperimentOutput> {
     if (task.trim().length === 0) {
       throw new AgentFailure("invalid_handoff", { message: HANDOFF_FAILURE_MESSAGE });
     }
 
     onLifecycle?.({ type: "agent.lifecycle", agentId: "analyst", phase: "started" });
 
-    let analystResponse: Extract<ModelResponse, { type: "text" }>;
+    let analystResponse: ExperimentOutput;
     try {
       analystResponse = await this.analyst.run(
         buildAnalystAssignment(task),

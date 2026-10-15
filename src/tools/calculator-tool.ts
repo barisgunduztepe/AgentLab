@@ -24,13 +24,10 @@ export class CalculatorTool implements Tool {
       Object.keys(input).length === 1 && "expression" in input && typeof input.expression === "string";
   }
 
-  // Temporary string bridge until the agent/provider migration in the next commit.
-  async execute(value: string | JsonObject, _options?: { signal?: AbortSignal }): Promise<string> {
+  async execute(value: JsonObject, _options: { signal?: AbortSignal } = {}): Promise<string> {
     void _options;
-    if (typeof value !== "string" && !this.validateInput(value)) {
-      throw new Error("Invalid calculator arguments.");
-    }
-    const input = typeof value === "string" ? value : value.expression;
+    if (!this.validateInput(value)) throw new Error("Invalid calculator arguments.");
+    const input = value.expression;
     if (typeof input !== "string" || input.trim().length === 0) {
       throw new Error("Invalid arithmetic expression.");
     }

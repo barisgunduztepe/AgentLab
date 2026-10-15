@@ -1,6 +1,7 @@
+import type { FakeResponse } from "../../../../agent/providers/fake-model-provider";
 import { randomUUID } from "node:crypto";
 import { createComparisonModelProviders } from "../../../../agent/create-model-provider";
-import type { ModelProvider, ModelResponse } from "../../../../agent/model-provider";
+import type { ModelProvider } from "../../../../agent/model-provider";
 import { SingleAgent } from "../../../../agent/single-agent";
 import {
   experimentHistoryStore,
@@ -39,8 +40,8 @@ export function createComparisonPostHandler(
   historyStore: Pick<ExperimentHistoryStore, "append">,
   options: {
     createProviders?: (fixtures?: {
-      baseline: readonly ModelResponse[];
-      structured: readonly ModelResponse[];
+      baseline: readonly FakeResponse[];
+      structured: readonly FakeResponse[];
     }) => [ModelProvider, ModelProvider];
     createComparisonId?: () => string;
   } = {},

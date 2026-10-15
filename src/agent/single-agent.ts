@@ -1,5 +1,5 @@
 import { AgentFailure } from "./agent-failure";
-import type { ModelProvider, ModelResponse } from "./model-provider";
+import type { ModelProvider, ModelResponse, ModelMessage } from "./model-provider";
 import type { Tool } from "../tools/tool";
 
 const MAX_CALCULATOR_NESTING_DEPTH = 32;
@@ -22,6 +22,9 @@ export type ModelCallSignal =
   /** The task was solved without asking the model (a plain arithmetic task goes straight to the calculator tool). */
   | { type: "model.skipped"; reason: "deterministic_arithmetic" };
 
+import type { ExperimentOutput } from "../experiments/types";
+import { readToolCall, validateRequest, validateResponse } from "./model-contract";
+
 export class SingleAgent {
   constructor(
     private readonly modelProvider: ModelProvider,
@@ -33,108 +36,74 @@ export class SingleAgent {
     task: string,
     onToolLifecycle?: (signal: ToolLifecycleSignal) => void,
     onModelCall?: (signal: ModelCallSignal) => void,
-  ): Promise<Extract<ModelResponse, { type: "text" }>> {
-    const calculatorTool = this.tools.find((tool) => tool.name === "calculator");
-
-    if (calculatorTool && isSimpleArithmeticExpression(task)) {
+  ): Promise<ExperimentOutput> {
+    const calculator = this.tools.find((tool) => tool.definition.name === "calculator");
+    if (calculator && isSimpleArithmeticExpression(task)) {
       onModelCall?.({ type: "model.skipped", reason: "deterministic_arithmetic" });
-      onToolLifecycle?.({ type: "tool.started", toolName: calculatorTool.name });
-
-      let output: string;
-      try {
-        output = await calculatorTool.execute(task);
-      } catch (error) {
-        onToolLifecycle?.({ type: "tool.failed", toolName: calculatorTool.name });
-        throw toToolFailure(error);
-      }
-
-      onToolLifecycle?.({ type: "tool.completed", toolName: calculatorTool.name });
-      return { type: "text", text: output };
+      const text = await executeTool(calculator, { expression: task }, onToolLifecycle);
+      return { type: "text", text };
     }
-
-    const prompt = this.configurationId === "structured"
-      ? `${task}\n\n${STRUCTURED_AGENT_INSTRUCTION}`
-      : task;
-    let response = await callProvider(
-      "initial",
-      () => this.modelProvider.generateResponse(prompt, this.tools),
-      onModelCall,
-    );
+    const prompt = this.configurationId === "structured" ? `${task}\n\n${STRUCTURED_AGENT_INSTRUCTION}` : task;
+    const messages: ModelMessage[] = [{ role: "user", text: prompt }];
+    const definitions = this.tools.map((tool) => tool.definition);
+    const callIds = new Set<string>();
     let executionCount = 0;
-
-    while (response.type === "tool_call") {
-      if (
-        typeof response.callId !== "string" ||
-        response.callId.trim().length === 0 ||
-        typeof response.toolName !== "string" ||
-        response.toolName.trim().length === 0 ||
-        typeof response.input !== "string"
-      ) {
-        throw new AgentFailure("invalid_tool_call");
+    while (true) {
+      const request = { messages: structuredClone(messages), tools: structuredClone(definitions) };
+      validateRequest(request);
+      const response = await callProvider(executionCount === 0 ? "initial" : "after_tool",
+        () => this.modelProvider.complete(request), onModelCall);
+      if (response.type === "text") {
+        if (!["stop", "unknown"].includes(response.finishReason)) throw new AgentFailure("provider_error");
+        messages.push({ role: "assistant", type: "text", text: response.text });
+        return { type: "text", text: response.text };
       }
-
-      const toolName = response.toolName;
-      const toolInput = response.input;
-      const tool = this.tools.find((allowedTool) => allowedTool.name === toolName);
-
-      if (!tool) {
-        throw new AgentFailure("tool_unavailable");
-      }
-
-      if (executionCount >= MAX_TOOL_EXECUTIONS) {
-        throw new AgentFailure("tool_limit");
-      }
-
-      onToolLifecycle?.({ type: "tool.started", toolName: tool.name });
+      const call = readToolCall(response.call?.callId, response.call?.toolName, response.call?.arguments);
+      if (callIds.has(call.callId)) throw new AgentFailure("invalid_tool_call");
+      callIds.add(call.callId);
+      messages.push({ role: "assistant", type: "tool_call", call,
+        ...(response.text === undefined ? {} : { text: response.text }) });
+      const tool = this.tools.find((tool) => tool.definition.name === call.toolName);
+      if (!tool) throw new AgentFailure("tool_unavailable");
+      if (executionCount >= MAX_TOOL_EXECUTIONS) throw new AgentFailure("tool_limit");
       executionCount += 1;
-
-      let toolResult: string;
-      try {
-        toolResult = await tool.execute(toolInput);
-      } catch (error) {
-        onToolLifecycle?.({ type: "tool.failed", toolName: tool.name });
-        throw toToolFailure(error);
-      }
-
-      onToolLifecycle?.({ type: "tool.completed", toolName: tool.name });
-      const callId = response.callId;
-      response = await callProvider(
-        "after_tool",
-        () => this.modelProvider.continueAfterToolCall(callId, toolResult),
-        onModelCall,
-      );
+      const output = await executeTool(tool, call.arguments, onToolLifecycle);
+      messages.push({ role: "tool", callId: call.callId, toolName: call.toolName, output });
     }
-
-    return response;
   }
 }
 
-/** Keeps the tool's own message for internal diagnostics while giving the run a safe failure code. */
-function toToolFailure(error: unknown): AgentFailure {
-  return new AgentFailure("tool_failed", {
-    ...(error instanceof Error ? { message: error.message } : {}),
-    cause: error,
-  });
+async function executeTool(tool: Tool, input: import("./model-provider").JsonObject,
+  onLifecycle?: (signal: ToolLifecycleSignal) => void): Promise<string> {
+  if (!tool.validateInput(input)) throw new AgentFailure("invalid_tool_call");
+  const toolName = tool.definition.name;
+  onLifecycle?.({ type: "tool.started", toolName });
+  let output: string;
+  try {
+    output = await tool.execute(input, {});
+    if (typeof output !== "string") throw new Error("Invalid tool result.");
+  } catch (cause) {
+    onLifecycle?.({ type: "tool.failed", toolName });
+    throw new AgentFailure("tool_failed", { cause, ...(cause instanceof Error ? { message: cause.message } : {}) });
+  }
+  onLifecycle?.({ type: "tool.completed", toolName });
+  return output;
 }
 
-/** Runs one provider call, reporting it as a model call and turning provider errors into a safe failure. */
-async function callProvider(
-  purpose: "initial" | "after_tool",
-  operation: () => Promise<ModelResponse>,
-  onModelCall?: (signal: ModelCallSignal) => void,
-): Promise<ModelResponse> {
+async function callProvider(purpose: "initial" | "after_tool", operation: () => Promise<ModelResponse>,
+  onModelCall?: (signal: ModelCallSignal) => void): Promise<ModelResponse> {
   onModelCall?.({ type: "model.requested", purpose });
-  const startedAtMs = Date.now();
-
+  const started = Date.now();
   let response: ModelResponse;
   try {
     response = await operation();
-  } catch (error) {
-    onModelCall?.({ type: "model.responded", outcome: "error", durationMs: Date.now() - startedAtMs });
-    throw new AgentFailure("provider_error", { cause: error });
+    validateResponse(response);
+  } catch (cause) {
+    onModelCall?.({ type: "model.responded", outcome: "error", durationMs: Date.now() - started });
+    if (cause instanceof AgentFailure && cause.failureCode === "invalid_tool_call") throw cause;
+    throw new AgentFailure("provider_error", { cause });
   }
-
-  onModelCall?.({ type: "model.responded", outcome: response.type, durationMs: Date.now() - startedAtMs });
+  onModelCall?.({ type: "model.responded", outcome: response.type, durationMs: Date.now() - started });
   return response;
 }
 

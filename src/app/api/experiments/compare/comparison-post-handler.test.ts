@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeModelProvider } from "../../../../agent/providers/fake-model-provider";
-import type { ModelResponse, ModelTool } from "../../../../agent/model-provider";
+import type { ModelResponse, ModelTool, CompleteRequest } from "../../../../agent/model-provider";
 import { STRUCTURED_AGENT_INSTRUCTION } from "../../../../agent/single-agent";
 import { ExperimentHistoryStore } from "../../../../experiments/experiment-history";
 import { createComparisonPostHandler } from "./comparison-post-handler";
@@ -16,10 +16,10 @@ class CapturingFakeProvider extends FakeModelProvider {
   readonly prompts: string[] = [];
   readonly toolDefinitions: (readonly ModelTool[])[] = [];
 
-  override generateResponse(prompt: string, tools: readonly ModelTool[] = []): Promise<ModelResponse> {
-    this.prompts.push(prompt);
-    this.toolDefinitions.push(tools);
-    return super.generateResponse(prompt);
+  override complete(request: CompleteRequest): Promise<ModelResponse> {
+    this.prompts.push(request.messages.flatMap((m) => m.role === "user" ? [m.text] : [])[0]);
+    this.toolDefinitions.push(request.tools);
+    return super.complete(request);
   }
 }
 
@@ -69,7 +69,7 @@ describe("POST /api/experiments/compare", () => {
       `Write three short sentences about why Istanbul is historically important.\n\n${STRUCTURED_AGENT_INSTRUCTION}`,
     ]);
     expect(providers).toHaveLength(2);
-    expect(providers[0].toolDefinitions[0]).toBe(providers[1].toolDefinitions[0]);
+    expect(providers[0].toolDefinitions[0]).toEqual(providers[1].toolDefinitions[0]);
     expect(createProviders).toHaveBeenCalledOnce();
     expect(body).toMatchObject({
       comparisonId: "comparison-fixed",
@@ -109,7 +109,7 @@ describe("POST /api/experiments/compare", () => {
   it("executes structured after a baseline failure and rejects scenarios outside the fixed comparable set", async () => {
     const handlePost = createComparisonPostHandler(history, {
       createProviders: () => [
-        new FakeModelProvider([{ type: "tool_call", callId: "unknown", toolName: "not_registered", input: "secret" }]),
+        new FakeModelProvider([{ type: "tool_call", call: { callId: "unknown", toolName: "not_registered", arguments: { expression: "secret" } } }]),
         new FakeModelProvider([{ type: "text", text: "Structured response." }]),
       ],
       createComparisonId: () => "comparison-failure",

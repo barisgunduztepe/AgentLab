@@ -1,125 +1,67 @@
-import OpenAI from "openai";
-import { APIConnectionError, APIError, APIUserAbortError } from "openai";
-import type { ModelProvider, ModelResponse, ModelTool } from "../model-provider";
+import OpenAI, { APIConnectionError, APIError, APIUserAbortError } from "openai";
+import type { ModelProvider, ModelResponse, CompleteRequest } from "../model-provider";
+import { AgentFailure } from "../agent-failure";
+import { modelUsage, readToolCall, validateRequest } from "../model-contract";
 import { RetryableProviderError } from "../retryable-provider-error";
 
 export class OpenAIModelProvider implements ModelProvider {
   private readonly client: OpenAI;
   private readonly model: string;
-  private previousResponseId: string | undefined;
-  private pendingCallId: string | undefined;
-  private tools: readonly ModelTool[] = [];
 
-  constructor(configuration?: { apiKey: string; model: string }) {
+  constructor(configuration?: { apiKey: string; model: string }, client?: OpenAI) {
     const apiKey = configuration?.apiKey ?? process.env.OPENAI_API_KEY;
     const model = configuration?.model ?? process.env.OPENAI_MODEL;
-
-    if (!apiKey?.trim()) {
-      throw new Error("OPENAI_API_KEY is not configured.");
-    }
-
-    if (!model?.trim()) {
-      throw new Error("OPENAI_MODEL is not configured.");
-    }
-
+    if (!apiKey?.trim()) throw new Error("OPENAI_API_KEY is not configured.");
+    if (!model?.trim()) throw new Error("OPENAI_MODEL is not configured.");
     this.model = model.trim();
-    this.client = new OpenAI({ apiKey, maxRetries: 0 });
+    this.client = client ?? new OpenAI({ apiKey, maxRetries: 0 });
   }
 
-  async generateResponse(prompt: string, tools: readonly ModelTool[] = []): Promise<ModelResponse> {
-    this.tools = tools;
-    this.pendingCallId = undefined;
-
-    const response = await this.createResponse({
-      model: this.model,
-      input: prompt,
-      tools: getCalculatorFunctionTools(tools),
-      parallel_tool_calls: false,
-      tool_choice: "auto",
-    });
-
-    return this.readResponse(response);
-  }
-
-  async continueAfterToolCall(callId: string, output: string): Promise<ModelResponse> {
-    if (!this.pendingCallId || callId !== this.pendingCallId || !this.previousResponseId) {
-      throw new Error("Tool call continuation is invalid.");
+  async complete(request: CompleteRequest): Promise<ModelResponse> {
+    validateRequest(request);
+    const input: OpenAI.Responses.ResponseInput = [];
+    for (const message of request.messages) {
+      if (message.role === "tool") {
+        input.push({ type: "function_call_output", call_id: message.callId, output: message.output });
+      } else if (message.role === "assistant" && message.type === "tool_call") {
+        if (message.text !== undefined) input.push({ role: "assistant", content: message.text });
+        input.push({ type: "function_call", call_id: message.call.callId, name: message.call.toolName,
+          arguments: JSON.stringify(message.call.arguments) });
+      } else input.push({ role: message.role, content: message.text });
     }
-
-    const response = await this.createResponse({
-      model: this.model,
-      previous_response_id: this.previousResponseId,
-      input: [{
-        type: "function_call_output",
-        call_id: callId,
-        output,
-      }],
-      tools: getCalculatorFunctionTools(this.tools),
-      parallel_tool_calls: false,
-      tool_choice: "auto",
-    });
-
-    return this.readResponse(response);
-  }
-
-  private async createResponse(
-    params: OpenAI.Responses.ResponseCreateParamsNonStreaming,
-  ): Promise<OpenAI.Responses.Response> {
+    let response: OpenAI.Responses.Response;
     try {
-      return await this.client.responses.create(params);
+      response = await this.client.responses.create({
+        model: this.model, input, store: false,
+        tools: request.tools.map((tool) => ({ type: "function", name: tool.name, description: tool.description,
+          strict: false, parameters: structuredClone(tool.parameters) as unknown as Record<string, unknown> })),
+        parallel_tool_calls: false, tool_choice: "auto",
+      }, { signal: request.signal });
     } catch (error) {
-      if (isRetryableOpenAIError(error)) {
-        throw new RetryableProviderError();
-      }
+      if (isRetryableOpenAIError(error)) throw new RetryableProviderError();
       throw new Error("OpenAI request failed.");
     }
-  }
-
-  private readResponse(response: OpenAI.Responses.Response): ModelResponse {
-    if (response.status !== "completed") {
+    const calls = response.output.filter((item) => item.type === "function_call");
+    if (calls.length > 1) throw new AgentFailure("invalid_tool_call");
+    const usage = modelUsage(response.usage?.input_tokens, response.usage?.output_tokens, response.usage?.total_tokens);
+    const text = response.output_text ?? "";
+    const refusal = response.output.some((item) => item.type === "message" && item.content.some((part) => part.type === "refusal"));
+    if (response.status === "incomplete") {
+      const reason = response.incomplete_details?.reason;
+      if (calls.length) throw new Error("Incomplete tool response.");
+      if (reason === "max_output_tokens" || reason === "content_filter") {
+        return { type: "text", text, finishReason: reason === "max_output_tokens" ? "length" : "content_filter", usage };
+      }
       throw new Error("OpenAI response was not completed.");
     }
-
-    this.previousResponseId = response.id;
-    const functionCalls = response.output.filter((item) => item.type === "function_call");
-
-    if (functionCalls.length > 1) {
-      throw new Error("Multiple tool calls are not supported.");
+    if (response.status !== "completed") throw new Error("OpenAI response was not completed.");
+    if (calls[0]) {
+      let args: unknown;
+      try { args = JSON.parse(calls[0].arguments); } catch { throw new AgentFailure("invalid_tool_call"); }
+      return { type: "tool_call", call: readToolCall(calls[0].call_id, calls[0].name, args),
+        ...(text ? { text } : {}), finishReason: "tool_call", usage };
     }
-
-    const functionCall = functionCalls[0];
-    if (!functionCall) {
-      this.pendingCallId = undefined;
-      return { type: "text", text: response.output_text };
-    }
-
-    if (!functionCall.call_id.trim() || !functionCall.name.trim()) {
-      throw new Error("OpenAI tool call is invalid.");
-    }
-
-    let parsedArguments: unknown;
-    try {
-      parsedArguments = JSON.parse(functionCall.arguments);
-    } catch {
-      throw new Error("OpenAI tool arguments are invalid.");
-    }
-
-    if (
-      typeof parsedArguments !== "object" ||
-      parsedArguments === null ||
-      !("expression" in parsedArguments) ||
-      typeof parsedArguments.expression !== "string"
-    ) {
-      throw new Error("OpenAI tool arguments are invalid.");
-    }
-
-    this.pendingCallId = functionCall.call_id;
-    return {
-      type: "tool_call",
-      callId: functionCall.call_id,
-      toolName: functionCall.name,
-      input: parsedArguments.expression,
-    };
+    return { type: "text", text, finishReason: refusal ? "refusal" : "stop", usage };
   }
 }
 
@@ -141,29 +83,4 @@ function isRetryableOpenAIError(error: unknown): boolean {
   }
 
   return error.status === 429 && error.code === "rate_limit_exceeded";
-}
-
-function getCalculatorFunctionTools(tools: readonly ModelTool[]): OpenAI.Responses.FunctionTool[] {
-  const calculator = tools.find((tool) => tool.name === "calculator");
-  if (!calculator) {
-    return [];
-  }
-
-  return [{
-    type: "function",
-    name: calculator.name,
-    description: calculator.description,
-    strict: true,
-    parameters: {
-      type: "object",
-      properties: {
-        expression: {
-          type: "string",
-          description: "The arithmetic expression to evaluate.",
-        },
-      },
-      required: ["expression"],
-      additionalProperties: false,
-    },
-  }];
 }

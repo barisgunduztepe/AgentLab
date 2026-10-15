@@ -1,9 +1,3 @@
-export interface Tool {
-  name: string;
-  description: string;
-  execute(input: string): Promise<string>;
-}
-
 type ParameterSchema = {
   type: "string" | "number" | "integer" | "boolean";
   description?: string;
@@ -24,7 +18,7 @@ export interface ToolDefinition {
   parameters: ToolParametersSchema;
 }
 
-export interface SchemaTool {
+export interface Tool {
   definition: ToolDefinition;
   validateInput(input: unknown): boolean;
   execute(input: import("../agent/model-completion").JsonObject, options: { signal?: AbortSignal }): Promise<string>;

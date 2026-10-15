@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ModelProvider, ModelResponse } from "./model-provider";
+import type { ModelProvider, CompleteRequest } from "./model-provider";
 import { FakeModelProvider } from "./providers/fake-model-provider";
 import { RetryingModelProvider } from "./providers/retrying-model-provider";
 import { SingleAgent } from "./single-agent";
@@ -13,19 +13,16 @@ class RecordingProvider implements ModelProvider {
   generateCount = 0;
   continueCount = 0;
 
-  constructor(private readonly response: ModelResponse | Error) {}
+  constructor(private readonly response: import("./providers/fake-model-provider").FakeResponse | Error) {}
 
-  async generateResponse(prompt: string): Promise<ModelResponse> {
+  async complete(request: CompleteRequest): Promise<import("./model-provider").ModelResponse> {
     this.generateCount += 1;
-    this.prompts.push(prompt);
+    this.prompts.push(request.messages.flatMap((m) => m.role === "user" ? [m.text] : [])[0]);
     if (this.response instanceof Error) throw this.response;
-    return this.response;
+    return { ...this.response, finishReason: this.response.finishReason ?? (this.response.type === "text" ? "stop" : "tool_call"), usage: this.response.usage ?? null };
   }
 
-  async continueAfterToolCall(): Promise<ModelResponse> {
-    this.continueCount += 1;
-    throw new Error("Unexpected continuation.");
-  }
+
 }
 
 function runner(analystProvider: ModelProvider, finalizerProvider: ModelProvider): TwoAgentHandoffRunner {
@@ -100,12 +97,7 @@ describe("TwoAgentHandoffRunner", () => {
 
   it("does not allow Finalizer to request a second handoff", async () => {
     const analyst = new RecordingProvider({ type: "text", text: analystNotes });
-    const finalizer = new RecordingProvider({
-      type: "tool_call",
-      callId: "unsupported-handoff",
-      toolName: "handoff",
-      input: "Return to Analyst",
-    });
+    const finalizer = new RecordingProvider({ type: "tool_call", call: { callId: "unsupported-handoff", toolName: "handoff", arguments: { expression: "Return to Analyst" } } });
 
     await expect(runner(analyst, finalizer).run(task)).rejects.toThrow("Agent handoff could not be completed.");
     expect(analyst.generateCount).toBe(1);
@@ -135,7 +127,7 @@ describe("TwoAgentHandoffRunner", () => {
 
     it("keeps the Finalizer's failure category, such as an unavailable tool", async () => {
       const analyst = new RecordingProvider({ type: "text", text: analystNotes });
-      const finalizer = new RecordingProvider({ type: "tool_call", callId: "c1", toolName: "handoff", input: "x" });
+      const finalizer = new RecordingProvider({ type: "tool_call", call: { callId: "c1", toolName: "handoff", arguments: { expression: "x" } } });
 
       await failsWith(analyst, finalizer, task, "tool_unavailable");
     });

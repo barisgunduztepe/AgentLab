@@ -1,16 +1,17 @@
+import type { FakeResponse } from "./providers/fake-model-provider";
 import { FakeModelProvider } from "./providers/fake-model-provider";
 import { GeminiModelProvider } from "./providers/gemini-model-provider";
 import { OpenAIModelProvider } from "./providers/openai-model-provider";
 import { RetryingModelProvider } from "./providers/retrying-model-provider";
-import type { ModelProvider, ModelResponse } from "./model-provider";
+import type { ModelProvider } from "./model-provider";
 
-export function createModelProvider(options: { fakeResponses?: readonly ModelResponse[] } = {}): ModelProvider {
+export function createModelProvider(options: { fakeResponses?: readonly FakeResponse[] } = {}): ModelProvider {
   return createFromConfiguration(resolveConfiguration(), options.fakeResponses);
 }
 
 export function createComparisonModelProviders(fixtures?: {
-  baseline: readonly ModelResponse[];
-  structured: readonly ModelResponse[];
+  baseline: readonly FakeResponse[];
+  structured: readonly FakeResponse[];
 }): [ModelProvider, ModelProvider] {
   const configuration = resolveConfiguration();
   return [
@@ -56,7 +57,7 @@ function resolveConfiguration(): ProviderConfiguration {
 
 function createFromConfiguration(
   configuration: ProviderConfiguration,
-  fakeResponses?: readonly ModelResponse[],
+  fakeResponses?: readonly FakeResponse[],
 ): ModelProvider {
   switch (configuration.provider) {
     case "fake":

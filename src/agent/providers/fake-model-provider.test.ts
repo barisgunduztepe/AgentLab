@@ -1,31 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { FakeModelProvider } from "./fake-model-provider";
-
+import type { CompleteRequest } from "../model-provider";
+const initial: CompleteRequest = { messages: [{ role: "user", text: "Say hello" }], tools: [] };
 describe("FakeModelProvider", () => {
-  it("returns its default deterministic text response", async () => {
-    await expect(new FakeModelProvider().generateResponse("Say hello")).resolves.toEqual({
-      type: "text",
-      text: "[Fake Model] Task received: Say hello",
-    });
+  it("returns deterministic default text without invented usage", async () => {
+    const provider = new FakeModelProvider();
+    await expect(provider.complete(initial)).resolves.toEqual({ type: "text", text: "[Fake Model] Task received: Say hello", finishReason: "stop", usage: null });
+    await expect(provider.complete(initial)).resolves.toEqual(await provider.complete(initial));
   });
-
-  it("can return a deterministic structured tool call", async () => {
-    const response = { type: "tool_call" as const, callId: "fake-call-1", toolName: "calculator", input: "12 * 8" };
-
-    await expect(new FakeModelProvider([response]).generateResponse("Calculate 12 * 8")).resolves.toEqual(response);
-  });
-
-  it("returns sequential responses and rejects after the sequence is exhausted", async () => {
-    const responses = [
-      { type: "tool_call" as const, callId: "fake-call-1", toolName: "calculator", input: "12 * 8" },
-      { type: "text" as const, text: "The answer is 96." },
-    ];
-    const provider = new FakeModelProvider(responses);
-
-    await expect(provider.generateResponse("Initial task")).resolves.toEqual(responses[0]);
-    await expect(provider.continueAfterToolCall("fake-call-1", "96")).resolves.toEqual(responses[1]);
-    await expect(provider.continueAfterToolCall("fake-call-1", "unexpected")).rejects.toThrow(
-      "FakeModelProvider response sequence is exhausted.",
-    );
+  it("derives its script position from the transcript and rejects mismatched turns", async () => {
+    const call = { callId: "one", toolName: "calculator", arguments: { expression: "1+1" } };
+    const provider = new FakeModelProvider([{ type: "tool_call", call }, { type: "text", text: "2" }]);
+    const next: CompleteRequest = { ...initial, messages: [...initial.messages,
+      { role: "assistant", type: "tool_call", call }, { role: "tool", callId: "one", toolName: "calculator", output: "2" }] };
+    await expect(provider.complete(next)).resolves.toMatchObject({ type: "text", text: "2" });
+    await expect(provider.complete(initial)).resolves.toMatchObject({ type: "tool_call", call });
+    await expect(provider.complete(next)).resolves.toMatchObject({ type: "text", text: "2" });
+    await expect(provider.complete({ ...initial, messages: [...initial.messages, { role: "assistant", type: "text", text: "wrong" }] })).rejects.toThrow();
   });
 });

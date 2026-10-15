@@ -1,159 +1,58 @@
 import { GoogleGenAI, type Interactions } from "@google/genai";
-import type { ModelProvider, ModelResponse, ModelTool } from "../model-provider";
+import type { ModelProvider, ModelResponse, CompleteRequest } from "../model-provider";
+import { AgentFailure } from "../agent-failure";
+import { modelUsage, readToolCall, validateRequest } from "../model-contract";
 import { RetryableProviderError } from "../retryable-provider-error";
 
 export class GeminiModelProvider implements ModelProvider {
   private readonly client: GoogleGenAI;
   private readonly model: string;
-  private previousInteractionId: string | undefined;
-  private pendingCallId: string | undefined;
-  private pendingFunctionName: string | undefined;
-  private tools: readonly ModelTool[] = [];
 
-  constructor(configuration?: { apiKey: string; model: string }) {
+  constructor(configuration?: { apiKey: string; model: string }, client?: GoogleGenAI) {
     const apiKey = configuration?.apiKey ?? process.env.GEMINI_API_KEY;
     const model = configuration?.model ?? process.env.GEMINI_MODEL;
-
-    if (!apiKey?.trim()) {
-      throw new Error("GEMINI_API_KEY is not configured.");
-    }
-
-    if (!model?.trim()) {
-      throw new Error("GEMINI_MODEL is not configured.");
-    }
-
+    if (!apiKey?.trim()) throw new Error("GEMINI_API_KEY is not configured.");
+    if (!model?.trim()) throw new Error("GEMINI_MODEL is not configured.");
     this.model = model.trim();
-    try {
-      this.client = new GoogleGenAI({ apiKey: apiKey.trim() });
-    } catch {
-      throw new Error("Gemini client could not be initialized.");
+    try { this.client = client ?? new GoogleGenAI({ apiKey: apiKey.trim() }); }
+    catch { throw new Error("Gemini client could not be initialized."); }
+  }
+
+  async complete(request: CompleteRequest): Promise<ModelResponse> {
+    validateRequest(request);
+    const input: Interactions.Step[] = [];
+    let system: string | undefined;
+    for (const message of request.messages) {
+      if (message.role === "system") system = message.text;
+      else if (message.role === "tool") input.push({ type: "function_result", call_id: message.callId, name: message.toolName, result: message.output });
+      else if (message.role === "assistant" && message.type === "tool_call") {
+        if (message.text !== undefined) input.push({ type: "model_output", content: [{ type: "text", text: message.text }] });
+        input.push({ type: "function_call", id: message.call.callId, name: message.call.toolName, arguments: structuredClone(message.call.arguments) });
+      } else input.push({ type: message.role === "user" ? "user_input" : "model_output", content: [{ type: "text", text: message.text }] });
     }
-  }
-
-  async generateResponse(prompt: string, tools: readonly ModelTool[] = []): Promise<ModelResponse> {
-    this.tools = tools;
-    this.previousInteractionId = undefined;
-    this.pendingCallId = undefined;
-    this.pendingFunctionName = undefined;
-
-    const interaction = await this.createInteraction({
-      model: this.model,
-      input: prompt,
-      tools: getCalculatorFunctionTools(tools),
-    });
-
-    return this.readInteraction(interaction);
-  }
-
-  async continueAfterToolCall(callId: string, output: string): Promise<ModelResponse> {
-    if (
-      !this.pendingCallId ||
-      callId !== this.pendingCallId ||
-      !this.pendingFunctionName ||
-      !this.previousInteractionId
-    ) {
-      throw new Error("Tool call continuation is invalid.");
-    }
-
-    const previousInteractionId = this.previousInteractionId;
-    const functionName = this.pendingFunctionName;
-
-    const interaction = await this.createInteraction({
-      model: this.model,
-      previous_interaction_id: previousInteractionId,
-      input: [{
-        type: "function_result",
-        name: functionName,
-        call_id: callId,
-        result: output,
-      }],
-      tools: getCalculatorFunctionTools(this.tools),
-    });
-
-    return this.readInteraction(interaction);
-  }
-
-  private async createInteraction(
-    params: Interactions.CreateModelInteractionParamsNonStreaming,
-  ): Promise<Interactions.Interaction> {
+    let interaction: Interactions.Interaction;
     try {
-      return await this.client.interactions.create(
-        { ...params, stream: false },
-        { maxRetries: 0 },
-      ) as Interactions.Interaction;
+      interaction = await this.client.interactions.create({
+        model: this.model, input, stream: false, store: false,
+        ...(system === undefined ? {} : { system_instruction: system }),
+        tools: request.tools.map((tool) => ({ type: "function" as const, name: tool.name, description: tool.description,
+          parameters: structuredClone(tool.parameters) })),
+      }, { maxRetries: 0, signal: request.signal }) as Interactions.Interaction;
     } catch (error) {
-      if (isRetryableGeminiError(error)) {
-        throw new RetryableProviderError();
-      }
+      if (isRetryableGeminiError(error)) throw new RetryableProviderError();
       throw new Error("Gemini request failed.");
     }
-  }
-
-  private readInteraction(
-    interaction: Interactions.Interaction,
-  ): ModelResponse {
-    return this.mapInteraction(interaction);
-  }
-
-  private mapInteraction(
-    interaction: Interactions.Interaction,
-  ): ModelResponse {
-    const functionCalls = interaction.steps?.filter((step) => step.type === "function_call") ?? [];
-
-    if (functionCalls.length > 1) {
-      throw new Error("Multiple tool calls are not supported.");
+    const calls = interaction.steps?.filter((step) => step.type === "function_call") ?? [];
+    if (calls.length > 1) throw new AgentFailure("invalid_tool_call");
+    const usage = modelUsage(interaction.usage?.total_input_tokens, interaction.usage?.total_output_tokens, interaction.usage?.total_tokens);
+    const text = interaction.output_text ?? "";
+    if (calls[0]) {
+      if (interaction.status !== "requires_action") throw new Error("Gemini tool call response status is invalid.");
+      return { type: "tool_call", call: readToolCall(calls[0].id, calls[0].name, calls[0].arguments),
+        ...(text ? { text } : {}), finishReason: "tool_call", usage };
     }
-
-    const functionCall = functionCalls[0];
-    if (!functionCall) {
-      if (interaction.status !== "completed") {
-        throw new Error("Gemini response was not completed.");
-      }
-
-      this.pendingCallId = undefined;
-      this.pendingFunctionName = undefined;
-      return { type: "text", text: interaction.output_text ?? "" };
-    }
-
-    if (interaction.status !== "requires_action") {
-      throw new Error("Gemini tool call response status is invalid.");
-    }
-
-    if (
-      typeof functionCall.id !== "string" ||
-      functionCall.id.trim().length === 0 ||
-      typeof functionCall.name !== "string" ||
-      functionCall.name.trim().length === 0
-    ) {
-      throw new Error("Gemini tool call is invalid.");
-    }
-
-    if (functionCall.name !== "calculator") {
-      throw new Error("Requested tool is unavailable.");
-    }
-
-    const argumentsValue: unknown = functionCall.arguments;
-    if (
-      typeof argumentsValue !== "object" ||
-      argumentsValue === null ||
-      Array.isArray(argumentsValue) ||
-      !("expression" in argumentsValue) ||
-      typeof argumentsValue.expression !== "string" ||
-      Object.keys(argumentsValue).length !== 1
-    ) {
-      throw new Error("Gemini tool arguments are invalid.");
-    }
-
-    this.previousInteractionId = interaction.id;
-    this.pendingCallId = functionCall.id;
-    this.pendingFunctionName = functionCall.name;
-
-    return {
-      type: "tool_call",
-      callId: functionCall.id,
-      toolName: functionCall.name,
-      input: argumentsValue.expression,
-    };
+    if (interaction.status !== "completed") throw new Error("Gemini response was not completed.");
+    return { type: "text", text, finishReason: "stop", usage };
   }
 }
 
@@ -209,28 +108,4 @@ function hasExplicitRateLimitCode(error: unknown): boolean {
     const structuredDetail = detail as { code?: unknown; reason?: unknown };
     return rateLimitCodes.has(String(structuredDetail.code)) || rateLimitCodes.has(String(structuredDetail.reason));
   });
-}
-
-function getCalculatorFunctionTools(tools: readonly ModelTool[]) {
-  const calculator = tools.find((tool) => tool.name === "calculator");
-  if (!calculator) {
-    return [];
-  }
-
-  return [{
-    type: "function" as const,
-    name: calculator.name,
-    description: calculator.description,
-    parameters: {
-      type: "object",
-      properties: {
-        expression: {
-          type: "string",
-          description: "The arithmetic expression to evaluate.",
-        },
-      },
-      required: ["expression"],
-      additionalProperties: false,
-    },
-  }];
 }

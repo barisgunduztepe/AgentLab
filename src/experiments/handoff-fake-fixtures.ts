@@ -1,8 +1,8 @@
-import type { ModelResponse } from "../agent/model-provider";
+import type { FakeResponse } from "../agent/providers/fake-model-provider";
 
 export interface HandoffFakeFixtures {
-  analyst: readonly ModelResponse[];
-  finalizer: readonly ModelResponse[];
+  analyst: readonly FakeResponse[];
+  finalizer: readonly FakeResponse[];
 }
 
 const HANDOFF_FAKE_FIXTURES: HandoffFakeFixtures = {

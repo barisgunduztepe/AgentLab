@@ -1,377 +1,123 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ModelProvider, ModelResponse } from "./model-provider";
-import { FakeModelProvider } from "./providers/fake-model-provider";
+import type { ModelProvider, ModelResponse, CompleteRequest } from "./model-provider";
+import { FakeModelProvider, type FakeResponse } from "./providers/fake-model-provider";
 import { RetryingModelProvider } from "./providers/retrying-model-provider";
 import { RetryableProviderError } from "./retryable-provider-error";
 import { SingleAgent, STRUCTURED_AGENT_INSTRUCTION, type ModelCallSignal, type ToolLifecycleSignal } from "./single-agent";
 import { CalculatorTool } from "../tools/calculator-tool";
 import type { Tool } from "../tools/tool";
 
-const fourthToolRequestFixture: readonly ModelResponse[] = [
-  { type: "tool_call", callId: "call-1", toolName: "counted", input: "one" },
-  { type: "tool_call", callId: "call-2", toolName: "counted", input: "two" },
-  { type: "tool_call", callId: "call-3", toolName: "counted", input: "three" },
-  { type: "tool_call", callId: "call-4", toolName: "counted", input: "four" },
-];
+const text = (value = "Done."): ModelResponse => ({ type: "text", text: value, finishReason: "stop", usage: null });
+const call = (id = "one", name = "calculator", expression = "12 * 8"): ModelResponse => ({
+  type: "tool_call", call: { callId: id, toolName: name, arguments: { expression } }, finishReason: "tool_call", usage: null,
+});
+const calculator = () => new CalculatorTool();
+const scripted = (responses: FakeResponse[]) => new FakeModelProvider(responses);
 
-describe("SingleAgent", () => {
-  const unusedContinuation = async () => ({ type: "text" as const, text: "unused" });
-
-  it("uses the injected calculator for arithmetic tasks", async () => {
-    const generateResponse = vi.fn(async () => ({ type: "text" as const, text: "unused" }));
-    const agent = new SingleAgent({ generateResponse, continueAfterToolCall: unusedContinuation }, [new CalculatorTool()]);
-
-    await expect(agent.run("12 * 8")).resolves.toEqual({ type: "text", text: "96" });
-    expect(generateResponse).not.toHaveBeenCalled();
+describe("SingleAgent stateless loop", () => {
+  it.each(["12 * 8", "(18 - 6) / 3", "-2 + 3", "1.5 * 2"])("skips the model for arithmetic: %s", async (task) => {
+    const complete = vi.fn(async () => text());
+    const signals: ModelCallSignal[] = [];
+    const lifecycle: ToolLifecycleSignal[] = [];
+    const agent = new SingleAgent({ complete }, [calculator()]);
+    const expected = await calculator().execute({ expression: task }, {});
+    await expect(agent.run(task, (s) => lifecycle.push(s), (s) => signals.push(s))).resolves.toEqual({ type: "text", text: expected });
+    expect(complete).not.toHaveBeenCalled();
+    expect(signals).toEqual([{ type: "model.skipped", reason: "deterministic_arithmetic" }]);
+    expect(lifecycle.map((s) => s.type)).toEqual(["tool.started", "tool.completed"]);
   });
-
-  it("emits tool lifecycle signals around a successful calculator call", async () => {
-    const signals: ToolLifecycleSignal[] = [];
-    const agent = new SingleAgent({ generateResponse: async () => ({ type: "text", text: "unused" }), continueAfterToolCall: unusedContinuation }, [new CalculatorTool()]);
-
-    await expect(agent.run("12 * 8", (signal) => signals.push(signal))).resolves.toEqual({ type: "text", text: "96" });
-    expect(signals).toEqual([
-      { type: "tool.started", toolName: "calculator" },
-      { type: "tool.completed", toolName: "calculator" },
+  it.each(["Write about Istanbul.", "2026 yılında İstanbul", "2 + "])("uses the model for non-arithmetic: %s", async (task) => {
+    const complete = vi.fn(async () => text("Answer"));
+    await expect(new SingleAgent({ complete }, [calculator()]).run(task)).resolves.toEqual({ type: "text", text: "Answer" });
+    expect(complete.mock.calls[0]).toEqual([{ messages: [{ role: "user", text: task }], tools: [calculator().definition] }]);
+  });
+  it("keeps the locked prompt experiment and fresh conversations for repeat runs", async () => {
+    const requests: CompleteRequest[] = [];
+    const provider: ModelProvider = { complete: async (r) => { requests.push(r); return text(); } };
+    const baseline = new SingleAgent(provider);
+    await baseline.run("Task"); await baseline.run("Task");
+    await new SingleAgent(provider, [], "structured").run("Task");
+    expect(requests.map((r) => r.messages)).toEqual([
+      [{ role: "user", text: "Task" }], [{ role: "user", text: "Task" }],
+      [{ role: "user", text: `Task\n\n${STRUCTURED_AGENT_INSTRUCTION}` }],
     ]);
   });
-
-  it("emits a failed tool lifecycle signal and rethrows tool errors", async () => {
-    const signals: ToolLifecycleSignal[] = [];
-    const rawToolError = "Division by zero is not allowed.";
-    const agent = new SingleAgent({ generateResponse: async () => ({ type: "text", text: "unused" }), continueAfterToolCall: unusedContinuation }, [new CalculatorTool()]);
-
-    await expect(agent.run("5 / 0", (signal) => signals.push(signal))).rejects.toThrow(rawToolError);
-    expect(signals).toEqual([
-      { type: "tool.started", toolName: "calculator" },
-      { type: "tool.failed", toolName: "calculator" },
+  it("owns the full transcript, keeps assistant text, and does not mutate earlier requests", async () => {
+    const responses = [ { ...call(), text: "Let me calculate." }, text("96") ];
+    const requests: CompleteRequest[] = [];
+    const provider: ModelProvider = { complete: async (r) => { requests.push(r); return responses[requests.length - 1]; } };
+    await new SingleAgent(provider, [calculator()]).run("Calculate and explain");
+    expect(requests[0].messages).toHaveLength(1);
+    expect(requests[1].messages).toEqual([
+      { role: "user", text: "Calculate and explain" },
+      { role: "assistant", type: "tool_call", call: (responses[0] as Extract<ModelResponse, { type: "tool_call" }>).call, text: "Let me calculate." },
+      { role: "tool", callId: "one", toolName: "calculator", output: "96" },
     ]);
-    expect(JSON.stringify(signals)).not.toContain(rawToolError);
+    expect(requests[0].tools[0]).not.toHaveProperty("execute");
   });
-
-  it.each([
-    ["Write three sentences about Istanbul.", "Istanbul is a historic city."],
-    ["2026 yılında İstanbul hakkında bilgi ver", "Istanbul has a long history."],
-    ["2 + ", "Please provide a complete expression."],
-  ])("uses the provider for non-arithmetic task: %s", async (task, providerText) => {
-    const execute = vi.fn(async () => "Calculator should not run.");
-    const calculatorTool: Tool = { name: "calculator", description: "Evaluates arithmetic expressions.", execute };
-    const generateResponse = vi.fn(async () => ({ type: "text" as const, text: providerText }));
-    const agent = new SingleAgent({ generateResponse, continueAfterToolCall: unusedContinuation }, [calculatorTool]);
-
-    await expect(agent.run(task)).resolves.toEqual({ type: "text", text: providerText });
-    expect(execute).not.toHaveBeenCalled();
-    expect(generateResponse).toHaveBeenCalledExactlyOnceWith(task, [calculatorTool]);
+  it("retries the same continuation without executing the tool again", async () => {
+    const execute = vi.fn(async () => "96");
+    const tool: Tool = { definition: calculator().definition, validateInput: calculator().validateInput, execute };
+    const complete = vi.fn().mockResolvedValueOnce(call()).mockRejectedValueOnce(new RetryableProviderError()).mockResolvedValueOnce(text("96"));
+    const provider = new RetryingModelProvider({ complete }, { sleep: async () => {}, random: () => 0 });
+    await new SingleAgent(provider, [tool]).run("Use the calculator");
+    expect(execute).toHaveBeenCalledOnce();
+    expect(complete.mock.calls[1][0]).toEqual(complete.mock.calls[2][0]);
   });
-
-  it("preserves the provider behavior when no tools are injected", async () => {
-    const task = "Summarize the experiment.";
-    const providerText = "The experiment completed successfully.";
-    let receivedPrompt: string | undefined;
-    const modelProvider: ModelProvider = {
-      async generateResponse(prompt) {
-        receivedPrompt = prompt;
-        return { type: "text", text: providerText };
-      },
-      async continueAfterToolCall() {
-        return { type: "text", text: providerText };
-      },
-    };
-
-    await expect(new SingleAgent(modelProvider).run(task)).resolves.toEqual({ type: "text", text: providerText });
-    expect(receivedPrompt).toBe(task);
-  });
-
-  it("keeps baseline prompt unchanged and adds only the locked structured instruction", async () => {
-    const task = "Write a concise explanation.";
-    const baselineGenerate = vi.fn(async () => ({ type: "text" as const, text: "baseline" }));
-    const structuredGenerate = vi.fn(async () => ({ type: "text" as const, text: "structured" }));
-    const provider = (generateResponse: typeof baselineGenerate): ModelProvider => ({
-      generateResponse,
-      continueAfterToolCall: unusedContinuation,
-    });
-
-    await new SingleAgent(provider(baselineGenerate)).run(task);
-    await new SingleAgent(provider(structuredGenerate), [], "structured").run(task);
-
-    expect(baselineGenerate).toHaveBeenCalledExactlyOnceWith(task, []);
-    expect(structuredGenerate).toHaveBeenCalledExactlyOnceWith(`${task}\n\n${STRUCTURED_AGENT_INSTRUCTION}`, []);
-  });
-
-  it("executes a structured tool call and continues the model with its result", async () => {
-    const task = "Calculate 12 * 8 and explain the result.";
-    const calculator = new CalculatorTool();
-    const execute = vi.fn((input: string) => calculator.execute(input));
-    const calculatorTool: Tool = { ...calculator, execute };
-    const provider = new FakeModelProvider([
-      { type: "tool_call", callId: "call-1", toolName: "calculator", input: "12 * 8" },
-      { type: "text", text: "The answer is 96." },
-    ]);
-    const generateResponse = vi.spyOn(provider, "generateResponse");
-    const continueAfterToolCall = vi.spyOn(provider, "continueAfterToolCall");
-    const agent = new SingleAgent(provider, [calculatorTool]);
-
-    await expect(agent.run(task)).resolves.toEqual({ type: "text", text: "The answer is 96." });
-
-    expect(execute).toHaveBeenCalledExactlyOnceWith("12 * 8");
-    expect(generateResponse).toHaveBeenCalledOnce();
-    expect(generateResponse.mock.calls[0][0]).toBe(task);
-    expect(continueAfterToolCall).toHaveBeenCalledExactlyOnceWith("call-1", "96");
-  });
-
-  it("retries continuation without executing the tool again or exposing private values in events", async () => {
-    const callId = "provider-private-call-id";
-    const toolInput = "12 * 8";
-    const toolResult = "96";
-    const execute = vi.fn(async () => toolResult);
-    const tool: Tool = { name: "calculator", description: "Calculates arithmetic.", execute };
-    const continueAfterToolCall = vi.fn()
-      .mockRejectedValueOnce(new RetryableProviderError())
-      .mockResolvedValueOnce({ type: "text" as const, text: "The result is 96." });
-    const provider = new RetryingModelProvider({
-      async generateResponse() {
-        return { type: "tool_call", callId, toolName: "calculator", input: toolInput };
-      },
-      continueAfterToolCall,
-    }, {
-      sleep: async () => {},
-      random: () => 0,
-    });
-    const events: ToolLifecycleSignal[] = [];
-    const agent = new SingleAgent(provider, [tool]);
-
-    await expect(agent.run("Use the calculator and explain the result.", (event) => events.push(event))).resolves.toEqual({
-      type: "text",
-      text: "The result is 96.",
-    });
-
-    expect(execute).toHaveBeenCalledExactlyOnceWith(toolInput);
-    expect(continueAfterToolCall).toHaveBeenCalledTimes(2);
-    expect(continueAfterToolCall).toHaveBeenNthCalledWith(1, callId, toolResult);
-    expect(continueAfterToolCall).toHaveBeenNthCalledWith(2, callId, toolResult);
-    expect(events).toEqual([
-      { type: "tool.started", toolName: "calculator" },
-      { type: "tool.completed", toolName: "calculator" },
-    ]);
-    expect(JSON.stringify(events)).not.toContain(callId);
-    expect(JSON.stringify(events)).not.toContain(toolInput);
-    expect(JSON.stringify(events)).not.toContain(toolResult);
-  });
-
-  it("executes repeated valid tool calls within the budget", async () => {
-    const calculator = new CalculatorTool();
-    const execute = vi.fn((input: string) => calculator.execute(input));
-    const calculatorTool: Tool = { ...calculator, execute };
-    const provider = new FakeModelProvider([
-      { type: "tool_call", callId: "call-1", toolName: "calculator", input: "12 * 8" },
-      { type: "tool_call", callId: "call-2", toolName: "calculator", input: "96 + 1" },
-      { type: "text", text: "The final result is 97." },
-    ]);
-    const continueAfterToolCall = vi.spyOn(provider, "continueAfterToolCall");
-    const agent = new SingleAgent(provider, [calculatorTool]);
-
-    await expect(agent.run("Calculate and increment.")).resolves.toEqual({
-      type: "text",
-      text: "The final result is 97.",
-    });
-
-    expect(execute).toHaveBeenCalledTimes(2);
-    expect(continueAfterToolCall).toHaveBeenNthCalledWith(1, "call-1", "96");
-    expect(continueAfterToolCall).toHaveBeenNthCalledWith(2, "call-2", "97");
-  });
-
-  it("executes at most three tools and sends the third result before rejecting a fourth call", async () => {
-    const execute = vi.fn(async (input: string) => `result-${input}`);
-    const countedTool: Tool = { name: "counted", description: "Counts test calls.", execute };
-    const provider = new FakeModelProvider(fourthToolRequestFixture);
-    const continueAfterToolCall = vi.spyOn(provider, "continueAfterToolCall");
-    const signals: ToolLifecycleSignal[] = [];
-    const agent = new SingleAgent(provider, [countedTool]);
-
-    await expect(agent.run("Use the counted tool repeatedly.", (signal) => signals.push(signal))).rejects.toThrow(
-      "Tool execution limit reached.",
-    );
-
+  it("executes three tools and sends the third result before rejecting a fourth", async () => {
+    const tool = calculator(); const execute = vi.spyOn(tool, "execute");
+    const provider = scripted([call("1"), call("2"), call("3"), call("4")]);
+    const complete = vi.spyOn(provider, "complete");
+    await expect(new SingleAgent(provider, [tool]).run("Calculate repeatedly")).rejects.toMatchObject({ failureCode: "tool_limit" });
     expect(execute).toHaveBeenCalledTimes(3);
-    expect(continueAfterToolCall).toHaveBeenCalledTimes(3);
-    expect(continueAfterToolCall).toHaveBeenLastCalledWith("call-3", "result-three");
-    expect(signals.map((signal) => signal.type)).toEqual([
-      "tool.started", "tool.completed",
-      "tool.started", "tool.completed",
-      "tool.started", "tool.completed",
-    ]);
+    expect(complete.mock.calls.at(-1)?.[0].messages.at(-1)).toEqual({ role: "tool", callId: "3", toolName: "calculator", output: "96" });
   });
-
-  describe("model call signals", () => {
-    const collect = () => {
-      const signals: ModelCallSignal[] = [];
-      return { signals, onModelCall: (signal: ModelCallSignal) => signals.push(signal) };
-    };
-
-    it("reports one request and one text response for a plain model answer", async () => {
-      const { signals, onModelCall } = collect();
-      const agent = new SingleAgent(new FakeModelProvider([{ type: "text", text: "Hello." }]));
-
-      await agent.run("Say hello.", undefined, onModelCall);
-
-      expect(signals).toEqual([
-        { type: "model.requested", purpose: "initial" },
-        { type: "model.responded", outcome: "text", durationMs: expect.any(Number) },
-      ]);
-      expect((signals[1] as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(0);
-    });
-
-    it("reports a call per provider round trip, with the tool result continuation marked after_tool", async () => {
-      const { signals, onModelCall } = collect();
-      const agent = new SingleAgent(new FakeModelProvider([
-        { type: "tool_call", callId: "call-1", toolName: "calculator", input: "1 + 1" },
-        { type: "text", text: "It is 2." },
-      ]), [new CalculatorTool()]);
-
-      await agent.run("Use the calculator.", undefined, onModelCall);
-
-      expect(signals.map((signal) => {
-        if (signal.type === "model.requested") return signal.purpose;
-        if (signal.type === "model.responded") return signal.outcome;
-        return signal.type;
-      })).toEqual(["initial", "tool_call", "after_tool", "text"]);
-    });
-
-    it("reports a failed call as an error outcome and still fails with provider_error", async () => {
-      const { signals, onModelCall } = collect();
-      const agent = new SingleAgent({
-        generateResponse: async () => { throw new Error("private provider detail"); },
-        continueAfterToolCall: unusedContinuation,
-      });
-
-      await expect(agent.run("Say hello.", undefined, onModelCall)).rejects.toMatchObject({ failureCode: "provider_error" });
-
-      expect(signals.map((signal) => signal.type)).toEqual(["model.requested", "model.responded"]);
-      expect(signals[1]).toMatchObject({ outcome: "error" });
-      expect(JSON.stringify(signals)).not.toContain("private provider detail");
-    });
-
-    it("never includes prompts, answers, or tool data in the signals", async () => {
-      const { signals, onModelCall } = collect();
-      const agent = new SingleAgent(new FakeModelProvider([
-        { type: "tool_call", callId: "private-call-id", toolName: "calculator", input: "7 * 6" },
-        { type: "text", text: "private final answer" },
-      ]), [new CalculatorTool()]);
-
-      await agent.run("private task text", undefined, onModelCall);
-
-      const serialized = JSON.stringify(signals);
-      for (const secret of ["private task text", "private final answer", "private-call-id", "7 * 6", "42"]) {
-        expect(serialized).not.toContain(secret);
-      }
-    });
-
-    it("reports that the model was skipped, instead of a model call, for a deterministic arithmetic task", async () => {
-      const { signals, onModelCall } = collect();
-      const agent = new SingleAgent(new FakeModelProvider(), [new CalculatorTool()]);
-
-      await agent.run("12 * 8", undefined, onModelCall);
-
-      expect(signals).toEqual([{ type: "model.skipped", reason: "deterministic_arithmetic" }]);
-    });
-
-    it("reports the skip before the tool lifecycle, and also when the calculator then fails", async () => {
-      const order: string[] = [];
-      const agent = new SingleAgent(new FakeModelProvider(), [new CalculatorTool()]);
-
-      await agent.run("12 * 8", (signal) => order.push(signal.type), (signal) => order.push(signal.type));
-      await expect(agent.run("5 / 0", (signal) => order.push(signal.type), (signal) => order.push(signal.type)))
-        .rejects.toMatchObject({ failureCode: "tool_failed" });
-
-      expect(order).toEqual([
-        "model.skipped", "tool.started", "tool.completed",
-        "model.skipped", "tool.started", "tool.failed",
-      ]);
-    });
-
-    it("does not report a skip when no calculator is registered and the model answers an arithmetic-looking task", async () => {
-      const { signals, onModelCall } = collect();
-      const agent = new SingleAgent(new FakeModelProvider([{ type: "text", text: "96" }]));
-
-      await agent.run("12 * 8", undefined, onModelCall);
-
-      expect(signals.map((signal) => signal.type)).toEqual(["model.requested", "model.responded"]);
-    });
-
-    it("does not let a failing signal callback masquerade as a provider failure", async () => {
-      const agent = new SingleAgent(new FakeModelProvider([{ type: "text", text: "Hello." }]));
-      const throwingCallback = (signal: ModelCallSignal) => {
-        if (signal.type === "model.responded") throw new Error("callback bug");
-      };
-
-      await expect(agent.run("Say hello.", undefined, throwingCallback)).rejects.toThrow("callback bug");
-      await expect(agent.run("Say hello.", undefined, throwingCallback)).rejects.not.toMatchObject({
-        failureCode: "provider_error",
-      });
-    });
+  it.each([
+    [call("one", "missing"), "tool_unavailable"],
+    [call(" "), "invalid_tool_call"],
+    [{ ...call(), call: { callId: "one", toolName: "calculator", arguments: { expression: 3 } } }, "invalid_tool_call"],
+    [{ ...call(), call: { callId: "one", toolName: "calculator", arguments: { expression: "1+1", extra: true } } }, "invalid_tool_call"],
+  ] as const)("rejects invalid or unavailable tools before execution", async (response, failureCode) => {
+    const tool = calculator(); const execute = vi.spyOn(tool, "execute");
+    await expect(new SingleAgent(scripted([response]), [tool]).run("Use a tool")).rejects.toMatchObject({ failureCode });
+    expect(execute).not.toHaveBeenCalled();
   });
-
-  describe("failure codes", () => {
-    const failsWith = (agent: SingleAgent, task: string, failureCode: string) =>
-      expect(agent.run(task)).rejects.toMatchObject({ name: "AgentFailure", failureCode });
-
-    it("classifies a failing deterministic arithmetic tool as tool_failed and keeps the tool message", async () => {
-      const agent = new SingleAgent(new FakeModelProvider(), [new CalculatorTool()]);
-
-      await failsWith(agent, "5 / 0", "tool_failed");
-      await expect(agent.run("5 / 0")).rejects.toThrow("Division by zero is not allowed.");
-    });
-
-    it("classifies a failing tool in the model loop as tool_failed with the original cause", async () => {
-      const cause = new Error("tool exploded");
-      const failingTool: Tool = { name: "counted", description: "Fails.", execute: async () => { throw cause; } };
-      const agent = new SingleAgent(
-        new FakeModelProvider([{ type: "tool_call", callId: "call-1", toolName: "counted", input: "x" }]),
-        [failingTool],
-      );
-
-      await failsWith(agent, "Use the tool.", "tool_failed");
-      await expect(agent.run("Use the tool.")).rejects.toMatchObject({ cause: expect.anything() });
-    });
-
-    it("classifies a request for an unregistered tool as tool_unavailable", async () => {
-      const agent = new SingleAgent(
-        new FakeModelProvider([{ type: "tool_call", callId: "call-1", toolName: "not_registered", input: "x" }]),
-        [new CalculatorTool()],
-      );
-
-      await failsWith(agent, "Look something up.", "tool_unavailable");
-    });
-
-    it("classifies a fourth tool request as tool_limit", async () => {
-      const countedTool: Tool = { name: "counted", description: "Counts.", execute: async (input) => `result-${input}` };
-      const agent = new SingleAgent(new FakeModelProvider(fourthToolRequestFixture), [countedTool]);
-
-      await failsWith(agent, "Use the counted tool repeatedly.", "tool_limit");
-    });
-
-    it("classifies a malformed tool call as invalid_tool_call", async () => {
-      const agent = new SingleAgent(
-        new FakeModelProvider([{ type: "tool_call", callId: " ", toolName: "calculator", input: "1 + 1" }]),
-        [new CalculatorTool()],
-      );
-
-      await failsWith(agent, "Use the calculator.", "invalid_tool_call");
-    });
-
-    it("classifies provider failures, including during continuation, as provider_error without leaking details", async () => {
-      const failingProvider: ModelProvider = {
-        generateResponse: async () => { throw new Error("private provider detail"); },
-        continueAfterToolCall: unusedContinuation,
-      };
-      await failsWith(new SingleAgent(failingProvider, []), "Say hello.", "provider_error");
-      await expect(new SingleAgent(failingProvider, []).run("Say hello.")).rejects.not.toThrow("private provider detail");
-
-      const failingContinuation: ModelProvider = {
-        generateResponse: async () => ({ type: "tool_call", callId: "call-1", toolName: "calculator", input: "1 + 1" }),
-        continueAfterToolCall: async () => { throw new Error("private continuation detail"); },
-      };
-      await failsWith(new SingleAgent(failingContinuation, [new CalculatorTool()]), "Use the calculator.", "provider_error");
-    });
+  it("rejects a reused call id before a second execution", async () => {
+    const tool = calculator(); const execute = vi.spyOn(tool, "execute");
+    await expect(new SingleAgent(scripted([call(), call()]), [tool]).run("Use a tool")).rejects.toMatchObject({ failureCode: "invalid_tool_call" });
+    expect(execute).toHaveBeenCalledOnce();
+  });
+  it.each([true, false])("keeps safe tool failure semantics in deterministic and model paths: %s", async (deterministic) => {
+    const events: ToolLifecycleSignal[] = [];
+    const agent = new SingleAgent(scripted([call("one", "calculator", "5/0")]), [calculator()]);
+    await expect(agent.run(deterministic ? "5/0" : "Use the tool", (s) => events.push(s))).rejects.toMatchObject({ failureCode: "tool_failed", cause: expect.any(Error) });
+    expect(events.map((s) => s.type)).toEqual(["tool.started", "tool.failed"]);
+    expect(JSON.stringify(events)).not.toContain("Division by zero");
+  });
+  it.each([0, 1])("classifies initial/continuation provider errors safely: %s", async (afterTool) => {
+    const complete = vi.fn().mockRejectedValue(new Error("private provider detail"));
+    if (afterTool) complete.mockResolvedValueOnce(call());
+    const signals: ModelCallSignal[] = [];
+    await expect(new SingleAgent({ complete }, [calculator()]).run("Use model", undefined, (s) => signals.push(s)))
+      .rejects.toMatchObject({ failureCode: "provider_error" });
+    expect(signals.at(-1)).toMatchObject({ type: "model.responded", outcome: "error" });
+    expect(JSON.stringify(signals)).not.toContain("private provider detail");
+  });
+  it("keeps secrets out of model signals while preserving call purposes", async () => {
+    const signals: ModelCallSignal[] = [];
+    await new SingleAgent(scripted([call("private-id", "calculator", "7*6"), text("private output")]), [calculator()])
+      .run("private task", undefined, (s) => signals.push(s));
+    expect(signals.filter((s) => s.type === "model.requested").map((s) => s.purpose)).toEqual(["initial", "after_tool"]);
+    for (const secret of ["private-id", "private output", "private task", "7*6"]) expect(JSON.stringify(signals)).not.toContain(secret);
+  });
+  it("does not classify callback bugs as provider errors", async () => {
+    await expect(new SingleAgent(scripted([text()])).run("Task", undefined, (s) => { if (s.type === "model.responded") throw new Error("callback bug"); })).rejects.toThrow("callback bug");
+  });
+  it.each(["length", "content_filter", "refusal"] as const)("does not complete truncated or refused text: %s", async (finishReason) => {
+    await expect(new SingleAgent(scripted([{ ...text(), finishReason }])).run("Task")).rejects.toMatchObject({ failureCode: "provider_error" });
+  });
+  it("accepts explicitly unknown finish reason without leaking metadata into output", async () => {
+    await expect(new SingleAgent(scripted([{ ...text(), finishReason: "unknown", usage: { inputTokens: 1, outputTokens: 2, totalTokens: null } }])).run("Task"))
+      .resolves.toEqual({ type: "text", text: "Done." });
   });
 });

@@ -56,8 +56,8 @@ describe("runExperiment", () => {
     const events: ExperimentEvent[] = [];
     const rawError = "private provider error and continuation identifier";
     const failingAnalyst = new SingleAgent({
-      async generateResponse() { throw new Error(rawError); },
-      async continueAfterToolCall() { throw new Error(rawError); },
+      async complete() { throw new Error(rawError); },
+
     });
     const runner = new TwoAgentHandoffRunner(failingAnalyst, new SingleAgent(new FakeModelProvider()));
 
@@ -116,8 +116,8 @@ describe("runExperiment", () => {
     const runner = new TwoAgentHandoffRunner(
       new SingleAgent(new FakeModelProvider([{ type: "text", text: "Useful Analyst notes." }])),
       new SingleAgent({
-        async generateResponse() { throw new Error(rawError); },
-        async continueAfterToolCall() { throw new Error(rawError); },
+        async complete() { throw new Error(rawError); },
+
       }),
     );
 
@@ -152,16 +152,16 @@ describe("runExperiment", () => {
     const privateCallIdA = "private-analyst-call-id";
     const privateCallIdB = "private-finalizer-call-id";
     const makeTool = (name: string, result: string): Tool => ({
-      name,
-      description: "Test-only private output tool.",
+      definition: { ...new CalculatorTool().definition, name, description: "Test-only private output tool." },
+      validateInput: new CalculatorTool().validateInput,
       async execute() { return result; },
     });
     const analyst = new SingleAgent(new FakeModelProvider([
-      { type: "tool_call", callId: privateCallIdA, toolName: "analyst-private-tool", input: privateInputA },
+      { type: "tool_call", call: { callId: privateCallIdA, toolName: "analyst-private-tool", arguments: { expression: privateInputA } } },
       { type: "text", text: "Analyst contribution." },
     ]), [makeTool("analyst-private-tool", privateOutputA)]);
     const finalizer = new SingleAgent(new FakeModelProvider([
-      { type: "tool_call", callId: privateCallIdB, toolName: "finalizer-private-tool", input: privateInputB },
+      { type: "tool_call", call: { callId: privateCallIdB, toolName: "finalizer-private-tool", arguments: { expression: privateInputB } } },
       { type: "text", text: "Finalizer contribution." },
     ]), [makeTool("finalizer-private-tool", privateOutputB)]);
 
@@ -201,7 +201,7 @@ describe("runExperiment", () => {
     const secretInput = "secret unsupported arguments";
     const runner = new TwoAgentHandoffRunner(
       new SingleAgent(new FakeModelProvider([
-        { type: "tool_call", callId: "private-call-id", toolName: rawToolName, input: secretInput },
+        { type: "tool_call", call: { callId: "private-call-id", toolName: rawToolName, arguments: { expression: secretInput } } },
       ]), [new CalculatorTool()]),
       new SingleAgent(new FakeModelProvider([{ type: "text", text: "Must not run." }])),
     );
@@ -231,8 +231,8 @@ describe("runExperiment", () => {
     const events: ExperimentEvent[] = [];
     const agent = new SingleAgent(
       {
-        async generateResponse() { return { type: "text", text: "unused" }; },
-        async continueAfterToolCall() { return { type: "text", text: "unused" }; },
+        async complete() { return { type: "text", text: "unused" , finishReason: "stop", usage: null }; },
+
       },
       [new CalculatorTool()],
     );
@@ -261,8 +261,8 @@ describe("runExperiment", () => {
     const rawToolError = "Division by zero is not allowed.";
     const agent = new SingleAgent(
       {
-        async generateResponse() { return { type: "text", text: "unused" }; },
-        async continueAfterToolCall() { return { type: "text", text: "unused" }; },
+        async complete() { return { type: "text", text: "unused" , finishReason: "stop", usage: null }; },
+
       },
       [new CalculatorTool()],
     );
@@ -289,12 +289,10 @@ describe("runExperiment", () => {
     const task = "Check the successful experiment flow.";
     const output = { type: "text" as const, text: "Experiment result." };
     const modelProvider: ModelProvider = {
-      async generateResponse() {
-        return output;
+      async complete() {
+        return { ...output, finishReason: "stop", usage: null };
       },
-      async continueAfterToolCall() {
-        return output;
-      },
+
     };
     const events: ExperimentEvent[] = [];
 
@@ -305,7 +303,7 @@ describe("runExperiment", () => {
     );
 
     expect(experiment.status).toBe("completed");
-    expect(experiment.output).toBe(output);
+    expect(experiment.output).toEqual(output);
     expect(experiment.startedAt).toBeTruthy();
     expect(Date.parse(experiment.startedAt)).not.toBeNaN();
     expect(experiment.endedAt).toBeTruthy();
@@ -332,7 +330,7 @@ describe("runExperiment", () => {
   ])("fails safely for an invalid or unknown tool request without starting a tool", async ({ toolName, privateValue }) => {
     const events: ExperimentEvent[] = [];
     const agent = new SingleAgent(new FakeModelProvider([
-      { type: "tool_call", callId: "fake-call", toolName, input: "sensitive input" },
+      { type: "tool_call", call: { callId: "fake-call", toolName: toolName, arguments: { expression: "sensitive input" } } },
     ]), [new CalculatorTool()]);
 
     const experiment = await runExperiment("Please calculate this.", agent, withoutModelEvents(events));
@@ -353,13 +351,12 @@ describe("runExperiment", () => {
     const rawToolError = "private tool failure details";
     const events: ExperimentEvent[] = [];
     const provider = new FakeModelProvider([
-      { type: "tool_call", callId: "fake-call", toolName: "failing", input: "secret arguments" },
+      { type: "tool_call", call: { callId: "fake-call", toolName: "failing", arguments: { expression: "secret arguments" } } },
       { type: "text", text: "This response must not be requested." },
     ]);
-    const continueAfterToolCall = vi.spyOn(provider, "continueAfterToolCall");
+    const complete = vi.spyOn(provider, "complete");
     const failingTool: Tool = {
-      name: "failing",
-      description: "Fails in a controlled test.",
+      definition: { ...new CalculatorTool().definition, name: "failing", description: "Fails in a controlled test." }, validateInput: new CalculatorTool().validateInput,
       async execute() {
         throw new Error(rawToolError);
       },
@@ -373,7 +370,7 @@ describe("runExperiment", () => {
 
     expect(experiment.status).toBe("failed");
     expect(experiment.errorMessage).toBe("Agent görevi tamamlayamadı.");
-    expect(continueAfterToolCall).not.toHaveBeenCalled();
+    expect(complete).toHaveBeenCalledOnce();
     expect(events.map((event) => event.type)).toEqual([
       "experiment.started",
       "agent.started",
@@ -391,13 +388,12 @@ describe("runExperiment", () => {
     const privateResult = "private tool result value";
     const events: ExperimentEvent[] = [];
     const provider = new FakeModelProvider([
-      { type: "tool_call", callId: "fake-call", toolName: "private-tool", input: privateInput },
+      { type: "tool_call", call: { callId: "fake-call", toolName: "private-tool", arguments: { expression: privateInput } } },
       { type: "text", text: "Task completed." },
     ]);
-    const continueAfterToolCall = vi.spyOn(provider, "continueAfterToolCall");
+    const complete = vi.spyOn(provider, "complete");
     const tool: Tool = {
-      name: "private-tool",
-      description: "Returns private test data.",
+      definition: { ...new CalculatorTool().definition, name: "private-tool", description: "Returns private test data." }, validateInput: new CalculatorTool().validateInput,
       async execute() {
         return privateResult;
       },
@@ -411,7 +407,7 @@ describe("runExperiment", () => {
 
     expect(experiment.status).toBe("completed");
     expect(experiment.output).toEqual({ type: "text", text: "Task completed." });
-    expect(continueAfterToolCall).toHaveBeenCalledExactlyOnceWith("fake-call", privateResult);
+    expect(complete).toHaveBeenLastCalledWith(expect.objectContaining({ messages: expect.arrayContaining([{ role: "tool", callId: "fake-call", toolName: "private-tool", output: privateResult }]) }));
     expect(JSON.stringify(events)).not.toContain(privateInput);
     expect(JSON.stringify(events)).not.toContain(privateResult);
     expect(events.map((event) => event.type)).toEqual([
@@ -427,12 +423,10 @@ describe("runExperiment", () => {
   it("returns a safe failed result without leaking provider error details", async () => {
     const rawProviderError = "private provider response and credential details";
     const modelProvider: ModelProvider = {
-      async generateResponse() {
+      async complete() {
         throw new Error(rawProviderError);
       },
-      async continueAfterToolCall() {
-        throw new Error(rawProviderError);
-      },
+
     };
     const events: ExperimentEvent[] = [];
 
@@ -490,7 +484,7 @@ describe("runExperiment", () => {
     it("places each model call around the tool it triggers, in order", async () => {
       const events: ExperimentEvent[] = [];
       const agent = new SingleAgent(new FakeModelProvider([
-        { type: "tool_call", callId: "call-1", toolName: "calculator", input: "2 + 3" },
+        { type: "tool_call", call: { callId: "call-1", toolName: "calculator", arguments: { expression: "2 + 3" } } },
         { type: "text", text: "The sum is 5." },
       ]), [new CalculatorTool()]);
 
@@ -549,8 +543,8 @@ describe("runExperiment", () => {
     it("reports a failed provider call as an error response right before experiment.failed", async () => {
       const events: ExperimentEvent[] = [];
       const provider: ModelProvider = {
-        async generateResponse() { throw new Error("private provider response"); },
-        async continueAfterToolCall() { throw new Error("private provider response"); },
+        async complete() { throw new Error("private provider response"); },
+
       };
 
       await runExperiment("Say hello.", new SingleAgent(provider), (event) => events.push(event));
@@ -569,7 +563,7 @@ describe("runExperiment", () => {
     it("keeps prompts, answers, tool data, and call IDs out of model call events", async () => {
       const events: ExperimentEvent[] = [];
       const agent = new SingleAgent(new FakeModelProvider([
-        { type: "tool_call", callId: "private-call-id", toolName: "calculator", input: "6 * 7" },
+        { type: "tool_call", call: { callId: "private-call-id", toolName: "calculator", arguments: { expression: "6 * 7" } } },
         { type: "text", text: "private final answer" },
       ]), [new CalculatorTool()]);
 

@@ -1,4 +1,4 @@
-import type { ModelProvider, ModelResponse, ModelTool } from "../model-provider";
+import type { ModelProvider, ModelResponse, CompleteRequest } from "../model-provider";
 import { RetryableProviderError } from "../retryable-provider-error";
 
 const MAX_ATTEMPTS = 3;
@@ -22,12 +22,8 @@ export class RetryingModelProvider implements ModelProvider {
     private readonly runtime: RetryRuntime = defaultRuntime,
   ) {}
 
-  generateResponse(prompt: string, tools?: readonly ModelTool[]): Promise<ModelResponse> {
-    return this.withRetry(() => this.provider.generateResponse(prompt, tools));
-  }
-
-  continueAfterToolCall(callId: string, output: string): Promise<ModelResponse> {
-    return this.withRetry(() => this.provider.continueAfterToolCall(callId, output));
+  complete(request: CompleteRequest): Promise<ModelResponse> {
+    return this.withRetry(() => this.provider.complete(request));
   }
 
   private async withRetry(operation: () => Promise<ModelResponse>): Promise<ModelResponse> {
