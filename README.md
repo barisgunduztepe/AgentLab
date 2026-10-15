@@ -84,6 +84,7 @@ variables above in `.env.local` or your shell (only the URL and model are requir
 ```bash
 npm run smoke:local -- --check  # GET /v1/models only; no model generation
 npm run smoke:local            # text, sequential calculator calls, then cancellation
+npm run smoke:local -- --record # same live run, plus sanitized response fixtures
 ```
 
 The manual script is not run by `npm test` or CI. It always uses the local compatible adapter,
@@ -100,13 +101,28 @@ No user history is written: execution uses `runExperiment` without the history s
 sets temporary `LOCALAPPDATA`/`XDG_DATA_HOME`. Existing TypeScript compiles the manual runner into a
 fresh temporary directory, which is removed afterward; no extra dependency is needed.
 
-The smoke helper's automatic tests use mocked HTTP only. There are no recorded real-response fixtures
-yet because no running local endpoint was available during implementation. See
-[the v0.8.4 validation report](docs/v0.8.4-validation.md) for the exact verification status of each adapter.
+`--record` is manual only. It writes new timestamped files under `src/agent/providers/fixtures/local`
+without overwriting prior captures. Before writing, it allowlists visible assistant content, tool-call
+structure and reported finish/usage; IDs are normalized and `created` is zeroed. Reasoning fields,
+inline think blocks, fingerprints, requests, headers, keys, addresses and unused fields are excluded.
+These fixed smoke-response fixtures contain visible text/tool arguments; application history and model
+events retain their existing privacy contract. Token counts remain as reported by the server.
+
+Automatic tests use mocked HTTP, including replay of genuinely captured Ollama responses: qwen3:8b
+text and a two-turn calculator loop, and llama3.1:8b text and a rejected two-call response. No completed
+cancellation response or failed single-call llama response was available to record. See
+[fixture provenance and contents](src/agent/providers/fixtures/local/README.md) and
+[the v0.8.4 validation report](docs/v0.8.4-validation.md) for measurements and adapter-specific status.
 
 ## Status
 
-AgentLab is under active development and used as a hands-on learning project. v0.8.3 is implemented and verified with fake/mocked providers only (🟡). v0.8.4 adapter and manual smoke support are implemented but verified only with mocks (🟡); live local smoke and real-response replay remain pending. Live behavior with real providers is not fully verified yet; automated tests use mocks and never call external APIs. See [ROADMAP.md](ROADMAP.md) for milestones.
+AgentLab is under active development and used as a hands-on learning project. v0.8 (Measurable core) is complete.
+v0.8.4 is ✅ specifically for the OpenAI-compatible adapter live-validated with **qwen3:8b**: text, two sequential
+calculator turns and client HTTP cancellation. Real-response replay runs offline. This is not a blanket
+compatibility claim: llama3.1:8b failed the single-call-per-response tool contract; its cancellation scenario
+was not reached. OpenAI Responses and Gemini Interactions remain 🟡 without live verification. HTTP abort
+does not prove server-side generation stopped; reasoning is not recorded. The next milestone is **v0.9.1**.
+Automated tests never call real model endpoints. See [ROADMAP.md](ROADMAP.md) for scope and remaining work.
 
 ## License
 
