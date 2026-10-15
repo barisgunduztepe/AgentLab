@@ -4,7 +4,7 @@ Bu belge, AgentLab'in mevcut durumunu ve onaylanmış geliştirme sırasını ka
 
 ## Mevcut checkpoint
 
-- v0.1–v0.7 tamamlandı (ayrıntı: [CHANGELOG.md](CHANGELOG.md)). v0.8.0 Toparlama (CI, ROADMAP/CHANGELOG ayrımı, AGENTS.md, Groq temizliği) tamamlandı; tek açık madde yerel fake kayıtlarının temizliği. v0.8.1 Koşu metadata'sı ve v0.8.2 Model çağrı olayları ve hata kodları uygulandı, ikisi de yalnız fake ile doğrulandı (🟡). v0.8.3 Durumsuz model arayüzü de uygulandı; yalnız fake/mock ile doğrulandı (🟡). Sıradaki aşama **v0.8.4 İlk gerçek provider ve canlı doğrulama**. Eski "v0.8 Automation" planı 2026-10-15 mimari incelemesiyle yeniden çerçevelendi; kontrollü tekrar artık v0.9.4'tedir (aşağıdaki "Yol haritası revizyonu" bölümüne bakın).
+- v0.1–v0.7 tamamlandı (ayrıntı: [CHANGELOG.md](CHANGELOG.md)). v0.8.0 Toparlama (CI, ROADMAP/CHANGELOG ayrımı, AGENTS.md, Groq temizliği) tamamlandı; tek açık madde yerel fake kayıtlarının temizliği. v0.8.1 Koşu metadata'sı ve v0.8.2 Model çağrı olayları ve hata kodları uygulandı, ikisi de yalnız fake ile doğrulandı (🟡). v0.8.3 Durumsuz model arayüzü de uygulandı; yalnız fake/mock ile doğrulandı (🟡). v0.8.4 yerel adaptör ve manuel smoke altyapısı uygulandı (🟡 yalnız mock); **canlı yerel doğrulama ve gerçek yanıt replay hâlâ bekliyor**. Eski "v0.8 Automation" planı 2026-10-15 mimari incelemesiyle yeniden çerçevelendi; kontrollü tekrar artık v0.9.4'tedir (aşağıdaki "Yol haritası revizyonu" bölümüne bakın).
 - v0.3 gerçek provider'larının canlı davranış doğrulaması sınırlıdır; Gemini tool-enabled isteklerinde daha önce 503 gözlenmiştir. Gerçek provider ile hiçbir akış canlı doğrulanmamıştır; bu, v0.8.4'te ele alınır.
 
 ## Yol haritası revizyonu (2026-10-15)
@@ -111,9 +111,20 @@ Kural: işi güvenilir biçimde yapabilecek en ekonomik model seçilir. Tasarım
 
 **Sınırlar:** Eski uygulamanın yeni ölçüm alanlarını/iptal kodunu okuması garanti edilmez. Transcript kaydı açılmadı. Usage yalnız yanıt alınan denemeye aittir; başarısız retry tüketimi ve maliyet hesaplanmaz. Senkron araç yürütmesi ortasında zorla kesme yoktur. Özel reasoning replay/opaque signature isteyen modeller kapsam dışıdır. OpenAI uyumlu yerel adaptör v0.8.4'tedir.
 
-### ⬜ v0.8.4 İlk gerçek provider ve canlı doğrulama
+### 🟡 v0.8.4 İlk gerçek provider ve canlı doğrulama
 
 **Amaç:** Gerçek sinyal almak. Ücretsiz/açık kaynak öncelikli olarak OpenAI uyumlu yerel bir uç nokta (örn. Ollama) için adaptör; elle çalıştırılan smoke betiği (otomatik testlere girmez); kaydedilmiş gerçek yanıtların testlerde tekrar oynatılması; canlı doğrulama raporu. Smoke testi laptopta küçük bir modelle, gerçek karşılaştırmalar GPU'lu masaüstünde yapılabilir; model indirmesi büyük olduğundan Wi-Fi'da yapılmalıdır.
+
+**Durum (2026-10-15):** Adaptör, yapılandırma, metadata genişletmesi ve manuel smoke betiği uygulandı; **yalnız mock ile doğrulandı**. Mevcut ve çalışan yerel uç nokta bulunamadığı için canlı üretim/iptal smoke'u yapılmadı. Gerçek HTTP yanıtı alınmadı; kayıtlı gerçek-yanıt fixture'ları ve replay parçası yapılmadı, uydurma fixture üretilmedi.
+
+- Yeni provider kimliği `openai-compatible`; mevcut `openai` SDK'sı açık baseURL ile `/v1/chat/completions` kullanır. Agent/Tool/complete sözleşmeleri değişmedi; Responses/Gemini adaptörleri korundu.
+- `OPENAI_COMPATIBLE_BASE_URL` ve `OPENAI_COMPATIBLE_MODEL` zorunlu; API anahtarı isteğe bağlı. History v3 yalnız provider/model kaydeder; adres ve anahtar kaydetmez. Fake ve eski kayıtlar korunur.
+- Ortak sözleşme testi yeni adaptörü, retry ile birlikte kapsar. Tam mesaj geçmişi, tools, bitiş nedeni/usage, anahtar/header izolasyonu, çoklu/bozuk araç çağrıları ve HTTP signal aktarımı sahte transport ile doğrulanır.
+- `npm run smoke:local -- --check` yalnız kurulu model listesini kontrol eder. Manuel gerçek smoke metin, en az iki calculator turu ve model HTTP iptali içerir; CI'da çalışmaz. Test yardımcıları yalnız mock kullanır. Gerçek history'ye yazılmaz; geçici derleme ve history kökü kullanılır.
+- Kontrol edilen localhost uç noktaları: 11434 ve 1234; ikisine de sandbox dışında ulaşılamadı. Kurulum, model indirme veya OpenAI/Gemini gerçek API çağrısı yapılmadı.
+- 411 otomatik test geçti. Ayrıntılı kontroller, değişen dosyalar, canlı doğrulama eksikleri ve sonraki adım: [v0.8.4 doğrulama raporu](docs/v0.8.4-validation.md).
+
+**Açık kabul ölçütleri:** Kullanıcının hazırladığı yerel sunucu + kurulu modelle metin/çok turlu araç/iptal smoke'unu çalıştırmak; gerçek yanıtları kimlik/adres/anahtar sızıntısı olmadan kaydedip replay testlerini eklemek. Bunlar gerçekleşmeden ✅ verilmez. Özel reasoning replay, token streaming, yeni araç ve maliyet hesabı kapsam dışıdır.
 
 ## v0.9 — Gerçek karşılaştırma
 

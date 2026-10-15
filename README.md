@@ -13,7 +13,7 @@ An experiment lab for observing, testing and comparing how AI agents behave. Run
 - Local experiment history with list and detail views
 - Every experiment records how it was produced (provider, model, agent configuration, commit); fake-provider runs are clearly marked
 - Model calls are observable (purpose, outcome, duration, finish reason and reported token usage) and failed runs report a safe failure code, without storing prompts or provider error text
-- Providers: a deterministic fake provider, OpenAI and Gemini, with a retry layer
+- Providers: a deterministic fake provider, OpenAI Responses, Gemini Interactions and a local OpenAI-compatible Chat Completions adapter, with a retry layer
 
 ## Getting started
 
@@ -31,11 +31,12 @@ The app starts on `http://127.0.0.1:3000` (the dev server binds to localhost onl
 
 ## Configuration
 
-The model provider must be chosen explicitly with `AGENTLAB_MODEL_PROVIDER`, one of `fake`, `openai` or `gemini`. There is no automatic fallback.
+The model provider must be chosen explicitly with `AGENTLAB_MODEL_PROVIDER`, one of `fake`, `openai`, `gemini` or `openai-compatible`. There is no automatic fallback.
 
 - `fake`: deterministic local runs, no API key needed (default in `.env.example`)
 - `openai`: set `OPENAI_API_KEY` and `OPENAI_MODEL`
 - `gemini`: set `GEMINI_API_KEY` and `GEMINI_MODEL`
+- `openai-compatible`: set `OPENAI_COMPATIBLE_BASE_URL` (include `/v1`, e.g. `http://127.0.0.1:11434/v1`) and `OPENAI_COMPATIBLE_MODEL`; `OPENAI_COMPATIBLE_API_KEY` is optional. This adapter uses Chat Completions, not Responses. No endpoint or model is selected automatically. Cloud OpenAI keys/organization/project headers are not inherited; keyless local requests have no Authorization header.
 
 Keep real keys in `.env.local` or your server environment. Never commit them.
 
@@ -72,11 +73,40 @@ older application releases are not guaranteed to read new measurement fields or 
 Only visible text and single-tool-call turns are supported. Models requiring private reasoning replay
 or opaque signatures are outside this release's supported scope. Tool schemas use a flat object subset
 of JSON Schema (string/number/integer/boolean fields and typed enums); runtime validation belongs to each tool.
-No local/OpenAI-compatible endpoint adapter is added here; that is v0.8.4.
+The separate local/OpenAI-compatible Chat Completions adapter was added in v0.8.4.
+
+## Manual local smoke (v0.8.4)
+
+Use an already installed and running loopback server with an already installed tool-capable model.
+The script never installs software or downloads a model. Configure the three `OPENAI_COMPATIBLE_*`
+variables above in `.env.local` or your shell (only the URL and model are required), then run:
+
+```bash
+npm run smoke:local -- --check  # GET /v1/models only; no model generation
+npm run smoke:local            # text, sequential calculator calls, then cancellation
+```
+
+The manual script is not run by `npm test` or CI. It always uses the local compatible adapter,
+regardless of the application's selected provider, and rejects non-loopback URLs and redirects.
+A missing endpoint/model stops execution before generation. Unexpected model behavior stops the
+remaining scenarios and exits with a failure. The calculator task must actually use the model and
+execute at least two calculator turns; the final expected result is 410. Cancellation begins after
+fetch dispatch. If the model finishes before cancellation, the smoke reports failure rather than
+claiming cancellation was verified.
+
+JSON output includes per-scenario finish reason, reported usage, duration, event counts and transport
+cancellation evidence. It omits prompts, answers, tool content, call IDs, keys and endpoint URLs.
+No user history is written: execution uses `runExperiment` without the history store, and the runner
+sets temporary `LOCALAPPDATA`/`XDG_DATA_HOME`. Existing TypeScript compiles the manual runner into a
+fresh temporary directory, which is removed afterward; no extra dependency is needed.
+
+The smoke helper's automatic tests use mocked HTTP only. There are no recorded real-response fixtures
+yet because no running local endpoint was available during implementation. See
+[the v0.8.4 validation report](docs/v0.8.4-validation.md) for the exact verification status of each adapter.
 
 ## Status
 
-AgentLab is under active development and used as a hands-on learning project. v0.8.3 is implemented and verified with fake/mocked providers only (🟡). Live behavior with real providers is not fully verified yet; automated tests use mocks and never call external APIs. See [ROADMAP.md](ROADMAP.md) for milestones.
+AgentLab is under active development and used as a hands-on learning project. v0.8.3 is implemented and verified with fake/mocked providers only (🟡). v0.8.4 adapter and manual smoke support are implemented but verified only with mocks (🟡); live local smoke and real-response replay remain pending. Live behavior with real providers is not fully verified yet; automated tests use mocks and never call external APIs. See [ROADMAP.md](ROADMAP.md) for milestones.
 
 ## License
 
