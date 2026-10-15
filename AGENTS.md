@@ -5,7 +5,7 @@
 Her anlamlı görevden önce:
 
 - README.md ve görevle ilgili mevcut dosyaları incele.
-- Mevcut milestone ve kapsamı belirle.
+- Mevcut milestone ve kapsamı belirle (sıradaki işler ROADMAP.md'de, tamamlananlar CHANGELOG.md'dedir).
 - Çalışan yapıyı anlamadan değiştirmeye başlama.
 
 ## 2. Milestone kapsamını koru
@@ -14,7 +14,7 @@ AgentLab küçük sürümler halinde geliştiriliyor. Bulunulan milestone dış�
 
 ## 3. Bu bir öğrenme projesidir
 
-Kullanıcı Codex ve yazılım geliştirmeyi uygulamalı öğreniyor. Önemli teknik adımlarda ne yapıldığını, neden yapıldığını ve hangi kavramın uygulandığını kısa ve anlaşılır biçimde açıkla. Basit ve tekrar eden işlemlerde gereksiz uzun açıklama yapma. Amaç yalnızca projeyi tamamlamak değil, geliştirme sürecini anlaşılır kılmaktır.
+Kullanıcı yapay zeka ajanlarıyla (Codex, Claude Code vb.) yazılım geliştirmeyi uygulamalı öğreniyor. Önemli teknik adımlarda ne yapıldığını, neden yapıldığını ve hangi kavramın uygulandığını kısa ve anlaşılır biçimde açıkla. Basit ve tekrar eden işlemlerde gereksiz uzun açıklama yapma. Amaç yalnızca projeyi tamamlamak değil, geliştirme sürecini anlaşılır kılmaktır.
 
 ## 4. Küçük ve doğrulanabilir adımlar kullan
 
@@ -26,7 +26,7 @@ Mimariyi, veri modelini, agent sistemini veya birden fazla önemli dosyayı etki
 
 ## 6. Doğrulamadan tamamlandı deme
 
-Kod değişikliklerinden sonra uygun doğrulamaları gerçekleştir. Mevcut testler varsa ilgili testleri çalıştır. Test yoksa yapılabilecek en uygun küçük doğrulamayı gerçekleştir. Bir özelliğin çalıştığını doğrulamadan “tamamlandı” olarak raporlama. Başarısız testleri veya doğrulama sorunlarını gizleme.
+Kod değişikliklerinden sonra uygun doğrulamaları gerçekleştir. Mevcut testler varsa ilgili testleri çalıştır. Test yoksa yapılabilecek en uygun küçük doğrulamayı gerçekleştir. Bir özelliğin çalıştığını doğrulamadan “tamamlandı” olarak raporlama. Başarısız testleri veya doğrulama sorunlarını gizleme. Gerçek provider gerektiren bir davranışı yalnız fake/mock ile doğruladıysan bunu açıkça belirt; canlı doğrulama yapılmadan milestone ROADMAP'te ✅ işaretlenmez.
 
 ## 7. Dependency ve teknoloji disiplini
 
@@ -54,7 +54,7 @@ AgentLab'ın temel amaçlarından biri agent davranışını gözlemlenebilir ha
 
 ## 11. Öğrenmeyi otomasyona kurban etme
 
-Bir işlem tamamen otomatik yapılabiliyor olsa bile, işlem mevcut öğrenme hedeflerinden birini içeriyorsa önemli aşamaları kullanıcı için görünür tut. Codex kullanıcı adına her şeyi tek adımda tamamlamaya çalışmamalıdır. Amaç kullanıcının zamanını gereksiz yere harcamak değil; önemli öğrenme noktalarının atlanmasını önlemektir.
+Bir işlem tamamen otomatik yapılabiliyor olsa bile, işlem mevcut öğrenme hedeflerinden birini içeriyorsa önemli aşamaları kullanıcı için görünür tut. Agent, kullanıcı adına her şeyi tek adımda tamamlamaya çalışmamalıdır. Amaç kullanıcının zamanını gereksiz yere harcamak değil; önemli öğrenme noktalarının atlanmasını önlemektir.
 
 ## 12. Görev sonu raporu
 
