@@ -11,21 +11,11 @@ import { describeRunForDisplay } from "@/experiments/run-label";
 import type { PublicScenario } from "@/experiments/catalog";
 import { modelMeasurementLabel } from "@/experiments/model-event-label";
 
-type UiStatus = ExperimentStatus | "idle";
-type ComparisonResult = {
-  comparisonId: string;
-  scenarioId: string;
-  runs: {
-    configurationId: "baseline" | "structured";
-    id: string;
-    status: "completed" | "failed";
-    durationMs?: number;
-    run: ExperimentRunMetadata;
-    evaluation?: EvaluationResult;
-    historySaved: boolean;
-  }[];
-};
+import { readEventStream } from "./experiment-stream";
+import { applyComparisonFrame, type ComparisonProgress } from "./comparison-progress";
+import type { ComparisonFrame } from "@/experiments/comparison-types";
 
+type UiStatus = ExperimentStatus | "idle";
 /** Short provider marker; fake runs are highlighted so they are never mistaken for real model runs. */
 function RunBadge({ run }: { run?: ExperimentRunMetadata }) {
   const label = describeRunForDisplay(run);
@@ -156,7 +146,7 @@ export default function Home() {
   const [historicalExperiment, setHistoricalExperiment] = useState<ExperimentHistoryRecord | null>(null);
   const [historicalLoading, setHistoricalLoading] = useState(false);
   const [historicalError, setHistoricalError] = useState<string | null>(null);
-  const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
+  const [comparisonProgress, setComparisonProgress] = useState<ComparisonProgress | null>(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [comparisonError, setComparisonError] = useState<string | null>(null);
 
@@ -269,26 +259,10 @@ export default function Home() {
         throw new Error("The event stream is unavailable.");
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
       let receivedFinalEvent = false;
-
-      function handleEventBlock(block: string) {
-        const data = block
-          .split(/\r?\n/)
-          .filter((line) => line.startsWith("data:"))
-          .map((line) => line.slice(5).trimStart())
-          .join("\n");
-
-        if (!data) {
-          return;
-        }
-
-        if (controller.signal.aborted) return;
-        const experimentEvent = JSON.parse(data) as ExperimentEvent;
+      await readEventStream<ExperimentEvent>(response, controller.signal, (experimentEvent) => {
+        if (activeExperiment.current !== controller) return;
         setEvents((currentEvents) => [...currentEvents, experimentEvent]);
-
         switch (experimentEvent.type) {
           case "experiment.started":
             setStartedAt(experimentEvent.occurredAt);
@@ -317,34 +291,8 @@ export default function Home() {
             setEvaluation(experimentEvent.evaluation);
             break;
         }
-      }
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-
-          buffer += decoder.decode(value, { stream: true });
-          buffer = buffer.replace(/\r\n/g, "\n");
-
-          let separatorIndex = buffer.indexOf("\n\n");
-          while (separatorIndex !== -1) {
-            handleEventBlock(buffer.slice(0, separatorIndex));
-            buffer = buffer.slice(separatorIndex + 2);
-            separatorIndex = buffer.indexOf("\n\n");
-          }
-        }
-
-        buffer += decoder.decode();
-        if (buffer.trim()) {
-          handleEventBlock(buffer);
-        }
-      } finally {
-        reader.releaseLock();
-        if (!controller.signal.aborted) await refreshHistory();
-      }
+      });
+      if (!controller.signal.aborted) await refreshHistory();
 
       if (!receivedFinalEvent && !controller.signal.aborted) {
         setErrorMessage("The event stream ended before the experiment finished.");
@@ -363,35 +311,37 @@ export default function Home() {
 
   async function handleComparison() {
     if (!selectedScenarioId || !comparableScenarioIds.has(selectedScenarioId) || isRunning || comparisonLoading) return;
-    setComparisonLoading(true);
-    setComparisonError(null);
-    setComparisonResult(null);
-    const controller = new AbortController();
-    activeComparison.current = controller;
+    setComparisonLoading(true); setComparisonError(null); setComparisonProgress(null);
+    const controller = new AbortController(); activeComparison.current = controller;
+    let finished = false;
+    let progress: ComparisonProgress | null = null;
     try {
       const response = await fetch("/api/experiments/compare", {
-        signal: controller.signal,
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        signal: controller.signal, method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify({ scenarioId: selectedScenarioId }),
       });
       if (!response.ok) throw new Error();
-      const result = await response.json() as ComparisonResult;
-      if (!controller.signal.aborted) {
-        setComparisonResult(result);
-        await refreshHistory();
-      }
+      await readEventStream<ComparisonFrame>(response, controller.signal, (frame) => {
+        if (activeComparison.current !== controller) return;
+        if (frame.type === "comparison.finished") finished = true;
+        progress = applyComparisonFrame(progress, frame); setComparisonProgress(progress);
+      });
+      if (!finished && !controller.signal.aborted) throw new Error("Incomplete stream.");
     } catch {
-      if (!controller.signal.aborted) setComparisonError("The comparison could not be completed.");
+      if (!controller.signal.aborted) setComparisonError("The comparison stream ended before completion. Partial results are retained.");
     } finally {
-      if (!controller.signal.aborted) setComparisonLoading(false);
-      controller.abort();
-      if (activeComparison.current === controller) activeComparison.current = null;
+      if (!controller.signal.aborted) { setComparisonLoading(false); await refreshHistory(); }
+      controller.abort(); if (activeComparison.current === controller) activeComparison.current = null;
     }
   }
 
   const isRunning = status === "running";
   const selectedScenario = scenarios.find((scenario) => scenario.id === selectedScenarioId);
+  const comparisonLabels = selectedScenario?.comparisonConfigurations.map((item) => item.label).join(" / ");
+  const comparisonResult = comparisonProgress && { comparisonId: comparisonProgress.comparisonId,
+    runs: comparisonProgress.rows.map((row) => ({ ...row, id: row.id ?? row.configurationId, historySaved: row.result?.historySaved ?? false,
+      durationMs: row.result?.durationMs, evaluation: row.result?.evaluation })) };
+
 
   return (
     <main
@@ -429,7 +379,7 @@ export default function Home() {
           onChange={(event) => {
             setSelectedScenarioId(event.target.value);
             setEvaluation(null);
-            setComparisonResult(null);
+            setComparisonProgress(null);
             setComparisonError(null);
           }}
           disabled={isRunning || comparisonLoading || scenarios.length === 0}
@@ -482,7 +432,7 @@ export default function Home() {
           <div style={{ marginTop: 12 }}>
             <button type="button" onClick={() => void handleComparison()} disabled={isRunning || comparisonLoading}
               style={{ padding: "9px 14px", border: "1px solid #2457d6", borderRadius: 6, background: "#fff", color: "#2457d6", font: "inherit", cursor: "pointer" }}>
-              {comparisonLoading ? "Running baseline and structured…" : "Run baseline / structured comparison"}
+              {comparisonLoading ? `Running ${comparisonLabels}…` : `Run ${comparisonLabels} comparison`}
             </button>
             <p style={{ margin: "6px 0 0", color: "#536078" }}>Same scenario, provider, model, tools, and evaluator; no winner is selected.</p>
             {comparisonError && <p role="alert" style={{ color: "#8f2424" }}>{comparisonError}</p>}
@@ -500,8 +450,8 @@ export default function Home() {
                   <tbody>
                     {comparisonResult.runs.map((run) => (
                       <tr key={run.id}>
-                        <td style={{ padding: "6px 8px", borderBottom: "1px solid #eef0f4" }}>{run.configurationId}</td>
-                        <td style={{ padding: "6px 8px", borderBottom: "1px solid #eef0f4" }}>{statusLabel(run.status)}</td>
+                        <td style={{ padding: "6px 8px", borderBottom: "1px solid #eef0f4" }}>{run.label}</td>
+                        <td style={{ padding: "6px 8px", borderBottom: "1px solid #eef0f4" }}>{run.status === "queued" || run.status === "persisting" ? run.status : statusLabel(run.status)}</td>
                         <td style={{ padding: "6px 8px", borderBottom: "1px solid #eef0f4" }}>
                           {run.evaluation ? (run.evaluation.passed ? "PASS" : "FAIL") : "Not evaluated"}
                         </td>
@@ -522,6 +472,7 @@ export default function Home() {
                     ))}
                   </tbody>
                 </table>
+                {comparisonResult.runs.map((run) => <details key={run.configurationId}><summary>{run.label} events ({run.events.length})</summary><ExperimentEventList events={run.events} emptyMessage="Waiting for events." /></details>)}
                 <p style={{ margin: "6px 0 0", color: "#536078" }}>
                   Provider: {describeRunForDisplay(comparisonResult.runs[0]?.run).provider}
                   <RunBadge run={comparisonResult.runs[0]?.run} />
