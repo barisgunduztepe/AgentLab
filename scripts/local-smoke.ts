@@ -34,7 +34,7 @@ export async function runLocalSmoke(config: OpenAICompatibleConfiguration, trans
     OPENAI_COMPATIBLE_MODEL: config.model, OPENAI_COMPATIBLE_API_KEY: config.apiKey });
   const scenarios = [
     { id: "text", task: "Explain in one short sentence what a thermostat does." },
-    { id: "calculator-two-turns", task: "Use the calculator in at least two separate sequential calls. First calculate 17 * 23. Then use the calculator again to add 19 to that result. Do not combine the steps into one call. Report the final value after both tool results." },
+    { id: "calculator-two-turns", task: "Use the calculator tool, one call per response. First call it only for 17 * 23 and wait for the tool result. After you receive that result, make a second, separate calculator call that adds 19 to it. Never make two calls in the same response and never compute anything yourself. After both tool results, report the final value." },
     { id: "cancellation", task: "Explain the history of navigation in several paragraphs." },
   ];
   const results = [];
