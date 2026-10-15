@@ -4,8 +4,25 @@ import { homedir } from "node:os";
 import { dirname, posix, win32 } from "node:path";
 import type { EvaluationResult, ExperimentEvent } from "./types";
 
+export type HistorySchemaVersion = 1 | 2 | 3;
+export type ExperimentRunProvider = "fake" | "openai" | "gemini";
+export type ExperimentArchitecture = "single" | "handoff";
+export type AgentConfigurationId = "baseline" | "structured" | "handoff-default";
+
+/** How a run was produced. Never holds secrets: only provider kind, model name, agent setup, and code version. */
+export interface ExperimentRunMetadata {
+  provider: ExperimentRunProvider;
+  /** Required for real providers; absent for the fake provider. */
+  model?: string;
+  architecture: ExperimentArchitecture;
+  agentConfigurationId: AgentConfigurationId;
+  agentConfigurationVersion: number;
+  /** Short Git commit of the running code, when it could be determined. */
+  commit?: string;
+}
+
 export interface ExperimentHistoryRecord {
-  schemaVersion: 1 | 2;
+  schemaVersion: HistorySchemaVersion;
   id: string;
   task: string;
   status: "completed" | "failed";
@@ -19,16 +36,18 @@ export interface ExperimentHistoryRecord {
   events: ExperimentEvent[];
   comparisonId?: string;
   configurationId?: "baseline" | "structured";
+  /** Present on v3 records only. v1/v2 records predate run metadata. */
+  run?: ExperimentRunMetadata;
 }
 
 export type ExperimentHistorySummary = Pick<
   ExperimentHistoryRecord,
   | "id" | "task" | "status" | "startedAt" | "endedAt" | "durationMs" | "scenarioId" | "evaluation"
-  | "comparisonId" | "configurationId"
+  | "comparisonId" | "configurationId" | "run"
 >;
 
 interface ExperimentHistorySnapshot {
-  schemaVersion: 1 | 2;
+  schemaVersion: HistorySchemaVersion;
   records: ExperimentHistoryRecord[];
 }
 
@@ -83,7 +102,7 @@ export class ExperimentHistoryStore {
       .sort((left, right) =>
         Date.parse(right.endedAt) - Date.parse(left.endedAt) || compareIds(left.id, right.id),
       )
-      .map(({ id, task, status, startedAt, endedAt, durationMs, scenarioId, evaluation, comparisonId, configurationId }) => ({
+      .map(({ id, task, status, startedAt, endedAt, durationMs, scenarioId, evaluation, comparisonId, configurationId, run }) => ({
         id,
         task,
         status,
@@ -94,6 +113,7 @@ export class ExperimentHistoryStore {
         ...(evaluation === undefined ? {} : { evaluation }),
         ...(comparisonId === undefined ? {} : { comparisonId }),
         ...(configurationId === undefined ? {} : { configurationId }),
+        ...(run === undefined ? {} : { run }),
       }));
   }
 
@@ -110,7 +130,7 @@ export class ExperimentHistoryStore {
     }
 
     snapshot.records.push(record);
-    if (record.schemaVersion === 2) snapshot.schemaVersion = 2;
+    snapshot.schemaVersion = Math.max(snapshot.schemaVersion, record.schemaVersion) as HistorySchemaVersion;
     snapshot.records.sort((left, right) =>
       left.endedAt.localeCompare(right.endedAt) || left.id.localeCompare(right.id),
     );
@@ -138,7 +158,7 @@ export class ExperimentHistoryStore {
     if (!isPlainRecord(value)) {
       throw new ExperimentHistoryError("invalid_snapshot");
     }
-    if (value.schemaVersion !== 1 && value.schemaVersion !== 2) {
+    if (value.schemaVersion !== 1 && value.schemaVersion !== 2 && value.schemaVersion !== 3) {
       throw new ExperimentHistoryError("unsupported_schema");
     }
     if (!hasExactKeys(value, ["schemaVersion", "records"]) || !Array.isArray(value.records)) {
@@ -150,7 +170,9 @@ export class ExperimentHistoryStore {
       throw new ExperimentHistoryError("invalid_snapshot");
     }
 
-    if (value.schemaVersion === 1 && records.some((record) => record.schemaVersion !== 1)) {
+    // A snapshot may hold records of its own version or older, never newer.
+    const snapshotVersion = value.schemaVersion;
+    if (records.some((record) => record.schemaVersion > snapshotVersion)) {
       throw new ExperimentHistoryError("invalid_snapshot");
     }
     return { schemaVersion: value.schemaVersion, records };
@@ -195,12 +217,65 @@ function sanitizeRecord(record: ExperimentHistoryRecord): ExperimentHistoryRecor
     ...(record.evaluation === undefined ? {} : {
       evaluation: { passed: record.evaluation.passed, reason: record.evaluation.reason },
     }),
-    ...(record.schemaVersion === 2 ? {
-      comparisonId: record.comparisonId,
-      configurationId: record.configurationId,
-    } : {}),
+    ...versionFields(record),
     events: record.events.map((event) => sanitizeEvent(event, false)),
   };
+}
+
+/** Copies only the fields that belong to the record's schema version (comparison fields, run metadata). */
+function versionFields(record: ExperimentHistoryRecord): Partial<ExperimentHistoryRecord> {
+  if (record.schemaVersion === 2) {
+    return { comparisonId: record.comparisonId, configurationId: record.configurationId };
+  }
+  if (record.schemaVersion === 3 && record.run) {
+    return {
+      run: sanitizeRun(record.run),
+      ...(record.comparisonId === undefined
+        ? {}
+        : { comparisonId: record.comparisonId, configurationId: record.configurationId }),
+    };
+  }
+  return {};
+}
+
+function sanitizeRun(run: ExperimentRunMetadata): ExperimentRunMetadata {
+  return {
+    provider: run.provider,
+    ...(run.model === undefined ? {} : { model: run.model }),
+    architecture: run.architecture,
+    agentConfigurationId: run.agentConfigurationId,
+    agentConfigurationVersion: run.agentConfigurationVersion,
+    ...(run.commit === undefined ? {} : { commit: run.commit }),
+  };
+}
+
+const RUN_PROVIDERS: readonly string[] = ["fake", "openai", "gemini"];
+const RUN_CONFIGURATIONS_BY_ARCHITECTURE: Record<ExperimentArchitecture, readonly string[]> = {
+  single: ["baseline", "structured"],
+  handoff: ["handoff-default"],
+};
+const MAX_MODEL_NAME_LENGTH = 200;
+
+function isValidRun(value: unknown, strictKeys: boolean): value is ExperimentRunMetadata {
+  if (!isPlainRecord(value)) return false;
+  if (strictKeys && !hasOnlyKeys(value, [
+    "provider", "model", "architecture", "agentConfigurationId", "agentConfigurationVersion", "commit",
+  ])) return false;
+
+  if (typeof value.provider !== "string" || !RUN_PROVIDERS.includes(value.provider)) return false;
+  if (value.provider === "fake") {
+    if (value.model !== undefined) return false;
+  } else if (typeof value.model !== "string" || value.model.length === 0 || value.model.length > MAX_MODEL_NAME_LENGTH) {
+    return false;
+  }
+
+  if (value.architecture !== "single" && value.architecture !== "handoff") return false;
+  if (
+    typeof value.agentConfigurationId !== "string" ||
+    !RUN_CONFIGURATIONS_BY_ARCHITECTURE[value.architecture].includes(value.agentConfigurationId)
+  ) return false;
+  if (!Number.isInteger(value.agentConfigurationVersion) || (value.agentConfigurationVersion as number) < 1) return false;
+  return value.commit === undefined || (typeof value.commit === "string" && /^[0-9a-f]{7,40}$/.test(value.commit));
 }
 
 function parseRecord(value: unknown): ExperimentHistoryRecord {
@@ -223,10 +298,7 @@ function parseRecord(value: unknown): ExperimentHistoryRecord {
     ...(record.evaluation === undefined ? {} : {
       evaluation: { passed: record.evaluation.passed, reason: record.evaluation.reason },
     }),
-    ...(record.schemaVersion === 2 ? {
-      comparisonId: record.comparisonId,
-      configurationId: record.configurationId,
-    } : {}),
+    ...versionFields(record),
     events: record.events.map((event) => sanitizeEvent(event, true)),
   };
 }
@@ -236,11 +308,11 @@ function isValidRecord(value: unknown, strictKeys: boolean): value is Experiment
 
   const allowedKeys = [
     "schemaVersion", "id", "task", "status", "startedAt", "endedAt", "durationMs",
-    "scenarioId", "output", "errorMessage", "evaluation", "events", "comparisonId", "configurationId",
+    "scenarioId", "output", "errorMessage", "evaluation", "events", "comparisonId", "configurationId", "run",
   ];
   if (strictKeys && !hasOnlyKeys(value, allowedKeys)) return false;
   if (
-    (value.schemaVersion !== 1 && value.schemaVersion !== 2) ||
+    (value.schemaVersion !== 1 && value.schemaVersion !== 2 && value.schemaVersion !== 3) ||
     typeof value.id !== "string" || value.id.length === 0 ||
     typeof value.task !== "string" ||
     (value.status !== "completed" && value.status !== "failed") ||
@@ -263,10 +335,21 @@ function isValidRecord(value: unknown, strictKeys: boolean): value is Experiment
 
   if (value.evaluation !== undefined && value.scenarioId === undefined) return false;
   if (value.schemaVersion === 1 && (value.comparisonId !== undefined || value.configurationId !== undefined)) return false;
+  if (value.schemaVersion !== 3 && value.run !== undefined) return false;
   if (value.schemaVersion === 2 && (
     typeof value.comparisonId !== "string" || value.comparisonId.length === 0 ||
     (value.configurationId !== "baseline" && value.configurationId !== "structured")
   )) return false;
+  if (value.schemaVersion === 3) {
+    if (!isValidRun(value.run, strictKeys)) return false;
+    // Comparison fields are optional in v3, but only as a consistent pair that matches the run configuration.
+    const hasComparison = value.comparisonId !== undefined || value.configurationId !== undefined;
+    if (hasComparison && (
+      typeof value.comparisonId !== "string" || value.comparisonId.length === 0 ||
+      (value.configurationId !== "baseline" && value.configurationId !== "structured") ||
+      value.configurationId !== value.run.agentConfigurationId
+    )) return false;
+  }
 
   return value.events.every((event) =>
     isValidEvent(event, strictKeys) && event.experimentId === value.id,

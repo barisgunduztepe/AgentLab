@@ -140,7 +140,7 @@ describe("ExperimentHistoryStore", () => {
   });
 
   it.each([
-    ["unsupported version", JSON.stringify({ schemaVersion: 3, records: [] }), "unsupported_schema"],
+    ["unsupported version", JSON.stringify({ schemaVersion: 4, records: [] }), "unsupported_schema"],
     ["unknown snapshot structure", JSON.stringify({ experiments: [] }), "unsupported_schema"],
     ["invalid record", JSON.stringify({ schemaVersion: 1, records: [{ id: "incomplete" }] }), "invalid_snapshot"],
   ] as const)("rejects %s and does not overwrite it", async (_label, contents, code) => {
@@ -187,6 +187,137 @@ describe("ExperimentHistoryStore", () => {
       .toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
     expect(() => store.append({ ...base, comparisonId: "comparison-1", configurationId: "other" as "baseline" }))
       .toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
+  });
+
+  describe("v3 run metadata", () => {
+    const fakeRun = {
+      provider: "fake" as const,
+      architecture: "single" as const,
+      agentConfigurationId: "baseline" as const,
+      agentConfigurationVersion: 1,
+    };
+    const v3Record = (id: string, endedAt: string, overrides: Partial<ExperimentHistoryRecord> = {}): ExperimentHistoryRecord => ({
+      ...historyRecord(id, "completed", endedAt),
+      schemaVersion: 3,
+      run: fakeRun,
+      ...overrides,
+    });
+
+    it("stores a non-comparison v3 record, keeps v1/v2 records untouched, and raises the snapshot to v3", async () => {
+      const legacy = historyRecord("legacy", "completed", "2026-10-01T00:00:01.000Z");
+      const comparison = {
+        ...historyRecord("compared", "completed", "2026-10-01T00:00:02.000Z"),
+        schemaVersion: 2 as const,
+        scenarioId: "direct-text",
+        comparisonId: "comparison-1",
+        configurationId: "baseline" as const,
+      };
+      const current = v3Record("current", "2026-10-01T00:00:03.000Z");
+      await store.append(legacy);
+      await store.append(comparison);
+      await store.append(current);
+
+      const snapshot = JSON.parse(await readFile(store.filePath, "utf8"));
+      expect(snapshot.schemaVersion).toBe(3);
+      expect(snapshot.records).toContainEqual(legacy);
+      expect(snapshot.records).toContainEqual(comparison);
+      expect(snapshot.records).toContainEqual(current);
+      await expect(store.getById("legacy")).resolves.not.toHaveProperty("run");
+      await expect(store.getById("current")).resolves.toMatchObject({ schemaVersion: 3, run: fakeRun });
+    });
+
+    it("stores v3 comparison fields only together and consistent with the run configuration", async () => {
+      const comparison = v3Record("baseline-run", "2026-10-01T00:00:01.000Z", {
+        scenarioId: "direct-text",
+        comparisonId: "comparison-1",
+        configurationId: "baseline",
+      });
+      await store.append(comparison);
+      await expect(store.getById("baseline-run")).resolves.toEqual(comparison);
+
+      expect(() => store.append(v3Record("only-id", "2026-10-01T00:00:02.000Z", { comparisonId: "comparison-1" })))
+        .toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
+      expect(() => store.append(v3Record("only-config", "2026-10-01T00:00:03.000Z", { configurationId: "baseline" })))
+        .toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
+      expect(() => store.append(v3Record("mismatch", "2026-10-01T00:00:04.000Z", {
+        comparisonId: "comparison-1",
+        configurationId: "structured",
+      }))).toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
+    });
+
+    it("accepts real providers with a model and an optional short commit", async () => {
+      const run = {
+        provider: "openai" as const,
+        model: "example-model",
+        architecture: "handoff" as const,
+        agentConfigurationId: "handoff-default" as const,
+        agentConfigurationVersion: 2,
+        commit: "0aa5360",
+      };
+      const record = v3Record("real-run", "2026-10-01T00:00:01.000Z", { run });
+      await store.append(record);
+
+      await expect(store.getById("real-run")).resolves.toMatchObject({ run });
+    });
+
+    it.each([
+      ["missing run", (record: ExperimentHistoryRecord) => ({ ...record, run: undefined })],
+      ["run on a v2 record", (record: ExperimentHistoryRecord) => ({
+        ...record, schemaVersion: 2 as const, comparisonId: "comparison-1", configurationId: "baseline" as const,
+      })],
+      ["run on a v1 record", (record: ExperimentHistoryRecord) => ({ ...record, schemaVersion: 1 as const })],
+      ["unknown provider", (record: ExperimentHistoryRecord) => ({ ...record, run: { ...fakeRun, provider: "groq" as "fake" } })],
+      ["fake provider with a model", (record: ExperimentHistoryRecord) => ({ ...record, run: { ...fakeRun, model: "m" } })],
+      ["real provider without a model", (record: ExperimentHistoryRecord) => ({
+        ...record, run: { ...fakeRun, provider: "gemini" as const },
+      })],
+      ["mismatched architecture and configuration", (record: ExperimentHistoryRecord) => ({
+        ...record, run: { ...fakeRun, agentConfigurationId: "handoff-default" as const },
+      })],
+      ["non-integer configuration version", (record: ExperimentHistoryRecord) => ({
+        ...record, run: { ...fakeRun, agentConfigurationVersion: 1.5 },
+      })],
+      ["zero configuration version", (record: ExperimentHistoryRecord) => ({
+        ...record, run: { ...fakeRun, agentConfigurationVersion: 0 },
+      })],
+      ["malformed commit", (record: ExperimentHistoryRecord) => ({ ...record, run: { ...fakeRun, commit: "not a sha" } })],
+    ])("rejects %s", (_label, corrupt) => {
+      const record = v3Record("bad-run", "2026-10-01T00:00:01.000Z");
+
+      expect(() => store.append(corrupt(record) as ExperimentHistoryRecord))
+        .toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
+    });
+
+    it("drops unknown run fields when saving and rejects them when reading", async () => {
+      const withExtra = {
+        ...v3Record("extra-run", "2026-10-01T00:00:01.000Z"),
+        run: { ...fakeRun, apiKey: "private-key", baseUrl: "http://private.example" },
+      } as unknown as ExperimentHistoryRecord;
+      await store.append(withExtra);
+
+      const raw = await readFile(store.filePath, "utf8");
+      expect(raw).not.toContain("private-key");
+      expect(raw).not.toContain("private.example");
+
+      await writeFile(store.filePath, JSON.stringify({ schemaVersion: 3, records: [withExtra] }), "utf8");
+      await expect(store.readAll()).rejects.toMatchObject({ code: "invalid_snapshot" });
+    });
+
+    it("rejects a record newer than its snapshot when reading", async () => {
+      const record = v3Record("too-new", "2026-10-01T00:00:01.000Z");
+      await writeFile(store.filePath, JSON.stringify({ schemaVersion: 2, records: [record] }), "utf8");
+
+      await expect(store.readAll()).rejects.toMatchObject({ code: "invalid_snapshot" });
+    });
+
+    it("includes run metadata in summaries only when recorded", async () => {
+      await store.append(historyRecord("legacy", "completed", "2026-10-01T00:00:01.000Z"));
+      await store.append(v3Record("current", "2026-10-01T00:00:02.000Z"));
+
+      const summaries = await store.listSummaries();
+      expect(summaries.find(({ id }) => id === "current")).toMatchObject({ run: fakeRun });
+      expect(summaries.find(({ id }) => id === "legacy")).not.toHaveProperty("run");
+    });
   });
 
   it("rejects events whose experiment ID differs from the enclosing record", async () => {
