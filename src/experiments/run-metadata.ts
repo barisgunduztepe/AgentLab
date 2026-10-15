@@ -1,3 +1,4 @@
+import { ARCHITECTURE_DEFINITIONS } from "../agent/architecture-definitions";
 import { execFileSync } from "node:child_process";
 import { describeConfiguredProvider } from "../agent/create-model-provider";
 import type {
@@ -10,11 +11,7 @@ import type {
  * Version of each agent configuration's instructions. Bump a number whenever the prompt text or
  * handoff assignment templates for that configuration change, so history shows which wording ran.
  */
-export const AGENT_CONFIGURATION_VERSIONS: Record<RunAgentConfigurationId, number> = {
-  baseline: 1,
-  structured: 1,
-  "handoff-default": 1,
-};
+export const AGENT_CONFIGURATION_VERSIONS = Object.fromEntries(Object.entries(ARCHITECTURE_DEFINITIONS).map(([id, entry]) => [id, entry.version])) as Record<RunAgentConfigurationId, number>;
 
 /**
  * Short Git commit of the code that is running, or undefined when it cannot be determined.

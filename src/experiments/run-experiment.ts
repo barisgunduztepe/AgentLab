@@ -5,7 +5,7 @@ import type { ToolLifecycleSignal } from "../agent/single-agent";
 import type { AgentId, AgentSignal } from "../agent/two-agent-handoff-runner";
 import type { Experiment, ExperimentEvent, ExperimentOutput } from "./types";
 
-type ExperimentRunner = {
+export type ExperimentRunner = {
   run(
     task: string,
     onToolLifecycle?: (signal: ToolLifecycleSignal & { agentId?: AgentId }) => void,

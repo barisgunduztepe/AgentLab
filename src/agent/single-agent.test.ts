@@ -3,7 +3,7 @@ import type { ModelProvider, ModelResponse, CompleteRequest } from "./model-prov
 import { FakeModelProvider, type FakeResponse } from "./providers/fake-model-provider";
 import { RetryingModelProvider } from "./providers/retrying-model-provider";
 import { RetryableProviderError } from "./retryable-provider-error";
-import { SingleAgent, STRUCTURED_AGENT_INSTRUCTION, type ModelCallSignal, type ToolLifecycleSignal } from "./single-agent";
+import { SingleAgent, structuredPrompt, STRUCTURED_AGENT_INSTRUCTION, type ModelCallSignal, type ToolLifecycleSignal } from "./single-agent";
 import { CalculatorTool } from "../tools/calculator-tool";
 import type { Tool } from "../tools/tool";
 
@@ -36,7 +36,7 @@ describe("SingleAgent stateless loop", () => {
     const provider: ModelProvider = { complete: async (r) => { requests.push(r); return text(); } };
     const baseline = new SingleAgent(provider);
     await baseline.run("Task"); await baseline.run("Task");
-    await new SingleAgent(provider, [], "structured").run("Task");
+    await new SingleAgent(provider, [], structuredPrompt).run("Task");
     expect(requests.map((r) => r.messages)).toEqual([
       [{ role: "user", text: "Task" }], [{ role: "user", text: "Task" }],
       [{ role: "user", text: `Task\n\n${STRUCTURED_AGENT_INSTRUCTION}` }],

@@ -6,7 +6,7 @@ import type { Tool } from "../tools/tool";
 const MAX_CALCULATOR_NESTING_DEPTH = 32;
 const MAX_TOOL_EXECUTIONS = 3;
 export const STRUCTURED_AGENT_INSTRUCTION = 'Organize your response into the labeled sections “Key points” and “Conclusion.” Keep it concise and complete the original task.';
-export type AgentConfigurationId = "baseline" | "structured";
+export const structuredPrompt = (task: string) => `${task}\n\n${STRUCTURED_AGENT_INSTRUCTION}`;
 
 export type ToolLifecycleSignal =
   | { type: "tool.started"; toolName: string }
@@ -30,7 +30,7 @@ export class SingleAgent {
   constructor(
     private readonly modelProvider: ModelProvider,
     private readonly tools: readonly Tool[] = [],
-    private readonly configurationId: AgentConfigurationId = "baseline",
+    private readonly preparePrompt: (task: string) => string = (task) => task,
   ) {}
 
   async run(
@@ -48,7 +48,7 @@ export class SingleAgent {
       throwIfCancelled(signal);
       return { type: "text", text };
     }
-    const prompt = this.configurationId === "structured" ? `${task}\n\n${STRUCTURED_AGENT_INSTRUCTION}` : task;
+    const prompt = this.preparePrompt(task);
     const messages: ModelMessage[] = [{ role: "user", text: prompt }];
     const definitions = this.tools.map((tool) => tool.definition);
     const callIds = new Set<string>();

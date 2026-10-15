@@ -1,3 +1,4 @@
+import { ARCHITECTURE_DEFINITIONS, isRunConfigurationId, type ArchitectureKind, type RunConfigurationId } from "../agent/architecture-definitions";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -9,8 +10,8 @@ import type { EvaluationResult, ExperimentEvent } from "./types";
 
 export type HistorySchemaVersion = 1 | 2 | 3;
 export type ExperimentRunProvider = "fake" | "openai" | "gemini" | "openai-compatible";
-export type ExperimentArchitecture = "single" | "handoff";
-export type RunAgentConfigurationId = "baseline" | "structured" | "handoff-default";
+export type ExperimentArchitecture = ArchitectureKind;
+export type RunAgentConfigurationId = RunConfigurationId;
 
 /** How a run was produced. Never holds secrets: only provider kind, model name, agent setup, and code version. */
 export interface ExperimentRunMetadata {
@@ -38,7 +39,7 @@ export interface ExperimentHistoryRecord {
   evaluation?: EvaluationResult;
   events: ExperimentEvent[];
   comparisonId?: string;
-  configurationId?: "baseline" | "structured";
+  configurationId?: RunConfigurationId;
   /** Present on v3 records only. v1/v2 records predate run metadata. */
   run?: ExperimentRunMetadata;
 }
@@ -253,10 +254,6 @@ function sanitizeRun(run: ExperimentRunMetadata): ExperimentRunMetadata {
 }
 
 const RUN_PROVIDERS: readonly string[] = ["fake", "openai", "gemini", "openai-compatible"];
-const RUN_CONFIGURATIONS_BY_ARCHITECTURE: Record<ExperimentArchitecture, readonly string[]> = {
-  single: ["baseline", "structured"],
-  handoff: ["handoff-default"],
-};
 const MAX_MODEL_NAME_LENGTH = 200;
 
 function isValidRun(value: unknown, strictKeys: boolean): value is ExperimentRunMetadata {
@@ -272,11 +269,7 @@ function isValidRun(value: unknown, strictKeys: boolean): value is ExperimentRun
     return false;
   }
 
-  if (value.architecture !== "single" && value.architecture !== "handoff") return false;
-  if (
-    typeof value.agentConfigurationId !== "string" ||
-    !RUN_CONFIGURATIONS_BY_ARCHITECTURE[value.architecture].includes(value.agentConfigurationId)
-  ) return false;
+  if (!isRunConfigurationId(value.agentConfigurationId) || ARCHITECTURE_DEFINITIONS[value.agentConfigurationId].architecture !== value.architecture) return false;
   if (!Number.isInteger(value.agentConfigurationVersion) || (value.agentConfigurationVersion as number) < 1) return false;
   return value.commit === undefined || (typeof value.commit === "string" && /^[0-9a-f]{7,40}$/.test(value.commit));
 }
@@ -349,7 +342,7 @@ function isValidRecord(value: unknown, strictKeys: boolean): value is Experiment
     const hasComparison = value.comparisonId !== undefined || value.configurationId !== undefined;
     if (hasComparison && (
       typeof value.comparisonId !== "string" || value.comparisonId.length === 0 ||
-      (value.configurationId !== "baseline" && value.configurationId !== "structured") ||
+      !isRunConfigurationId(value.configurationId) ||
       value.configurationId !== value.run.agentConfigurationId
     )) return false;
   }

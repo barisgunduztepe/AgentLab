@@ -2,7 +2,7 @@ import type { FakeResponse } from "../../../../agent/providers/fake-model-provid
 import { randomUUID } from "node:crypto";
 import { createComparisonModelProviders } from "../../../../agent/create-model-provider";
 import type { ModelProvider } from "../../../../agent/model-provider";
-import { SingleAgent } from "../../../../agent/single-agent";
+import { SingleAgent, structuredPrompt } from "../../../../agent/single-agent";
 import {
   experimentHistoryStore,
   type ExperimentHistoryStore,
@@ -96,7 +96,7 @@ export function createComparisonPostHandler(
     for (const [index, configurationId] of configurations.entries()) {
       if (request.signal.aborted) break;
       const events: ExperimentEvent[] = [];
-      const agent = new SingleAgent(providers[index], tools, configurationId);
+      const agent = new SingleAgent(providers[index], tools, configurationId === "structured" ? structuredPrompt : undefined);
       const experiment = await runExperiment(scenario.task, agent, (event) => events.push(event), { signal: request.signal });
       const evaluation = evaluateScenario(scenarioId, experiment, events);
       const run = describeRun(configurationId);

@@ -7,7 +7,7 @@ import { RetryingModelProvider } from "./providers/retrying-model-provider";
 import type { ModelProvider } from "./model-provider";
 
 export function createModelProvider(options: { fakeResponses?: readonly FakeResponse[] } = {}): ModelProvider {
-  return createFromConfiguration(resolveConfiguration(), options.fakeResponses);
+  return createProviderContext().create(options.fakeResponses);
 }
 
 export function createComparisonModelProviders(fixtures?: {
@@ -19,6 +19,12 @@ export function createComparisonModelProviders(fixtures?: {
     createFromConfiguration(configuration, fixtures?.baseline),
     createFromConfiguration(configuration, fixtures?.structured),
   ];
+}
+
+export function createProviderContext() {
+  const configuration = resolveConfiguration();
+  const description = configuration.provider === "fake" ? { provider: configuration.provider } : { provider: configuration.provider, model: configuration.model };
+  return { description, create: (responses?: readonly FakeResponse[]) => createFromConfiguration(configuration, responses) };
 }
 
 /** Provider kind and model name for history records. Never includes keys or other credentials. */
