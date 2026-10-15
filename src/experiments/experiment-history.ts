@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, posix, win32 } from "node:path";
 import type { EvaluationResult, ExperimentEvent } from "./types";
 
 export interface ExperimentHistoryRecord {
@@ -44,16 +44,18 @@ export function getDefaultExperimentHistoryPath(
   environment: NodeJS.ProcessEnv = process.env,
   homeDirectory: string = homedir(),
 ): string {
+  // Resolve with the target platform's path rules, not the host's, so the result matches the platform argument.
+  const pathApi = platform === "win32" ? win32 : posix;
   const configuredDirectory = platform === "win32"
     ? environment.LOCALAPPDATA?.trim()
     : environment.XDG_DATA_HOME?.trim();
-  const localDataDirectory = configuredDirectory && isAbsolute(configuredDirectory)
+  const localDataDirectory = configuredDirectory && pathApi.isAbsolute(configuredDirectory)
     ? configuredDirectory
     : platform === "win32"
-      ? join(homeDirectory, "AppData", "Local")
-      : join(homeDirectory, ".local", "share");
+      ? pathApi.join(homeDirectory, "AppData", "Local")
+      : pathApi.join(homeDirectory, ".local", "share");
 
-  return join(localDataDirectory, "AgentLab", "experiments.json");
+  return pathApi.join(localDataDirectory, "AgentLab", "experiments.json");
 }
 
 export class ExperimentHistoryStore {

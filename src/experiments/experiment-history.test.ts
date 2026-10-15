@@ -1,6 +1,6 @@
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ExperimentHistoryError,
@@ -246,7 +246,21 @@ describe("ExperimentHistoryStore", () => {
       { LOCALAPPDATA: "C:\\Users\\tester\\AppData\\Local" } as unknown as NodeJS.ProcessEnv,
       "C:\\Users\\tester",
     ))
-      .toBe(join("C:\\Users\\tester\\AppData\\Local", "AgentLab", "experiments.json"));
+      .toBe(win32.join("C:\\Users\\tester\\AppData\\Local", "AgentLab", "experiments.json"));
+  });
+
+  it("resolves the default path with POSIX rules on Linux regardless of the host", () => {
+    expect(getDefaultExperimentHistoryPath(
+      "linux",
+      { XDG_DATA_HOME: "/data/xdg" } as unknown as NodeJS.ProcessEnv,
+      "/home/tester",
+    )).toBe("/data/xdg/AgentLab/experiments.json");
+
+    expect(getDefaultExperimentHistoryPath(
+      "linux",
+      { XDG_DATA_HOME: "relative/path" } as unknown as NodeJS.ProcessEnv,
+      "/home/tester",
+    )).toBe("/home/tester/.local/share/AgentLab/experiments.json");
   });
 
   it("rejects duplicate experiment IDs instead of creating duplicate terminal records", async () => {
