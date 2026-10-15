@@ -1,4 +1,4 @@
-import type { ExperimentHistoryRecord, ExperimentRunMetadata } from "./experiment-history";
+import type { ExperimentHistoryRecord, ExperimentRunMetadata, RunAgentConfigurationId } from "./experiment-history";
 import type { EvaluationResult, Experiment, ExperimentEvent } from "./types";
 
 export function toExperimentHistoryRecord(
@@ -7,7 +7,7 @@ export function toExperimentHistoryRecord(
   evaluation: EvaluationResult | undefined,
   events: ExperimentEvent[],
   run: ExperimentRunMetadata,
-  comparison?: { comparisonId: string; configurationId: "baseline" | "structured" },
+  comparison?: { comparisonId: string; configurationId: RunAgentConfigurationId },
 ): ExperimentHistoryRecord {
   if (experiment.status === "running" || !experiment.endedAt || experiment.durationMs === undefined) {
     throw new Error("A terminal experiment must include end timing.");

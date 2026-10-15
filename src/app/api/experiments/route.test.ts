@@ -423,7 +423,7 @@ describe("SSE cancellation", () => {
       entered(); await abortableDelay(60_000, request.signal);
       return { type: "text" as const, text: "late", finishReason: "stop" as const, usage: null };
     });
-    const factory = vi.spyOn(providerFactory, "createModelProvider").mockReturnValue({ complete });
+    const factory = vi.spyOn(providerFactory, "createProviderContext").mockReturnValue({ description: { provider: "fake" }, create: () => ({ complete }) });
     const controller = new AbortController();
     const append = vi.spyOn(historyStore, "append");
     try {
