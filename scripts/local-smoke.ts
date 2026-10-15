@@ -5,6 +5,7 @@ import { SingleAgent } from "../src/agent/single-agent";
 import { CalculatorTool } from "../src/tools/calculator-tool";
 import { runExperiment } from "../src/experiments/run-experiment";
 import type { ExperimentEvent } from "../src/experiments/types";
+import { sanitizeLocalResponse, type LocalResponseRecording } from "./local-response-recording";
 
 export function requireLocalEndpoint(baseURL: string): void {
   const url = new URL(baseURL);
@@ -28,7 +29,7 @@ export async function probeLocalEndpoint(config: OpenAICompatibleConfiguration, 
 
 /** Executes only when called by the manual runner; importing this module never calls a model. */
 export async function runLocalSmoke(config: OpenAICompatibleConfiguration, transport: typeof fetch = fetch,
-  options: { timeoutMs?: number; cancellationDelayMs?: number } = {}) {
+  options: { timeoutMs?: number; cancellationDelayMs?: number; record?: (snapshot: LocalResponseRecording) => void } = {}) {
   requireLocalEndpoint(config.baseURL);
   config = getOpenAICompatibleConfiguration({ OPENAI_COMPATIBLE_BASE_URL: config.baseURL,
     OPENAI_COMPATIBLE_MODEL: config.model, OPENAI_COMPATIBLE_API_KEY: config.apiKey });
@@ -56,7 +57,12 @@ export async function runLocalSmoke(config: OpenAICompatibleConfiguration, trans
       removeTransportListeners.push(() => req.signal.removeEventListener("abort", onAbort));
       const pending = transport(req, { redirect: "error" });
       if (scenario.id === "cancellation") cancelTimer = setTimeout(() => controller.abort(), options.cancellationDelayMs ?? 10);
-      return await pending;
+      const response = await pending;
+      if (options.record && response.ok) {
+        const snapshot = sanitizeLocalResponse(await response.clone().json(), [config.baseURL, config.apiKey ?? ""], dispatched);
+        options.record({ scenario: scenario.id, response: snapshot });
+      }
+      return response;
     };
     const client = new OpenAI({ baseURL: config.baseURL, apiKey: config.apiKey ?? "agentlab-local-no-key", maxRetries: 0,
       adminAPIKey: null, organization: null, project: null, fetch: observedFetch,

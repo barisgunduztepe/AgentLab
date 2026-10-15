@@ -1,5 +1,8 @@
 import { getOpenAICompatibleConfiguration } from "../src/agent/providers/openai-compatible-model-provider";
 import { probeLocalEndpoint, runLocalSmoke } from "./local-smoke";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import type { LocalResponseRecording } from "./local-response-recording";
 
 async function main() {
   const config = getOpenAICompatibleConfiguration();
@@ -9,7 +12,18 @@ async function main() {
     if (!probe.ready) process.exitCode = 1;
     return;
   }
-  const report = await runLocalSmoke(config);
+  const responses: LocalResponseRecording[] = [];
+  const recording = process.argv.includes("--record");
+  const report = await runLocalSmoke(config, fetch, recording ? { record: (response) => responses.push(response) } : {});
+  if (recording && responses.length) {
+    const directory = join(process.cwd(), "src/agent/providers/fixtures/local");
+    await mkdir(directory, { recursive: true });
+    const capturedAt = new Date().toISOString();
+    const filename = `${config.model.replace(/[^a-zA-Z0-9_-]/g, "-")}-${capturedAt.replace(/[:.]/g, "-")}.json`;
+    await writeFile(join(directory, filename), JSON.stringify({ source: "live-ollama-smoke", model: config.model,
+      capturedAt, promptVersion: "bf220ed", responses }, null, 2) + "\n", { encoding: "utf8", flag: "wx" });
+    console.log(JSON.stringify({ recording: filename, responseCount: responses.length }));
+  }
   console.log(JSON.stringify(report, null, 2));
   if (!report.ok) process.exitCode = 1;
 }

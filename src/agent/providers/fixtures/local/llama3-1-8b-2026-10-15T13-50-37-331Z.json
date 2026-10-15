@@ -1,0 +1,72 @@
+{
+  "source": "live-ollama-smoke",
+  "model": "llama3.1:8b",
+  "capturedAt": "2026-10-15T13:50:37.331Z",
+  "promptVersion": "bf220ed",
+  "responses": [
+    {
+      "scenario": "text",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "A thermostat regulates temperature by turning heating or cooling systems on and off as needed."
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 21,
+          "completion_tokens": 17,
+          "total_tokens": 38
+        }
+      }
+    },
+    {
+      "scenario": "calculator-two-turns",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "recorded-call-1-1",
+                  "type": "function",
+                  "function": {
+                    "name": "calculator",
+                    "arguments": "{\"expression\":\"17 * 23\"}"
+                  }
+                },
+                {
+                  "id": "recorded-call-1-2",
+                  "type": "function",
+                  "function": {
+                    "name": "calculator",
+                    "arguments": "{\"expression\":\"391 + 19\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 239,
+          "completion_tokens": 50,
+          "total_tokens": 289
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,120 @@
+{
+  "source": "live-ollama-smoke",
+  "model": "qwen3:8b",
+  "capturedAt": "2026-10-15T13:50:09.621Z",
+  "promptVersion": "bf220ed",
+  "responses": [
+    {
+      "scenario": "text",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "A thermostat regulates the temperature in a space by turning heating or cooling systems on or off to maintain a set desired temperature."
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 21,
+          "completion_tokens": 208,
+          "total_tokens": 229
+        }
+      }
+    },
+    {
+      "scenario": "calculator-two-turns",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "recorded-call-1-1",
+                  "type": "function",
+                  "function": {
+                    "name": "calculator",
+                    "arguments": "{\"expression\":\"17 * 23\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 221,
+          "completion_tokens": 500,
+          "total_tokens": 721
+        }
+      }
+    },
+    {
+      "scenario": "calculator-two-turns",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "recorded-call-2-1",
+                  "type": "function",
+                  "function": {
+                    "name": "calculator",
+                    "arguments": "{\"expression\":\"391 + 19\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 260,
+          "completion_tokens": 446,
+          "total_tokens": 706
+        }
+      }
+    },
+    {
+      "scenario": "calculator-two-turns",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "The final result after both calculator operations is **410**."
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 300,
+          "completion_tokens": 143,
+          "total_tokens": 443
+        }
+      }
+    }
+  ]
+}
