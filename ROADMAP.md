@@ -206,6 +206,23 @@ v0.7 sonunda yapılan mimari inceleme, laboratuvarın karşılaştırma için ge
 
 Sıralama gerekçesi: ölçüm ve arayüz düzeltilmeden eklenen her provider/araç/mimari, calculator'a özel ve durum saklayan kodu çoğaltır. Bu sıra hem en ucuz yoldur hem de öğrenme hedefindeki Context/Harness konusunu doğrudan çalıştırır.
 
+## Önerilen çalışma modeli (milestone başına)
+
+Kural: işi güvenilir biçimde yapabilecek en ekonomik model seçilir. Tasarım kararı gerektiren milestone'larda önce Opus tasarlar, sonra Sonnet uygular; Sonnet birkaç denemede çözemezse Opus'a dönülür. Fable yalnızca istisnai durumlarda.
+
+| Milestone | Tasarım | Uygulama | Not |
+|---|---|---|---|
+| v0.8.0 Toparlama | — | 🌙 Sonnet | Mekanik işler (CI, silme, belge). Toplu biçim düzeltmeleri için ⚡ Haiku yeterli. |
+| v0.8.1 Koşu metadata'sı | 🌙 Sonnet | 🌙 Sonnet | Şema v3 küçük ve açık. |
+| v0.8.2 Model çağrı olayları ve hata kodları | 🌙 Sonnet | 🌙 Sonnet | Olay tipleri mevcut kalıbı izler; `failureCode` listesi karmaşıklaşırsa ☀️ Opus. |
+| v0.8.3 Durumsuz model arayüzü | ☀️ Opus | 🌙 Sonnet | En kritik mimari karar: mesaj modeli, araç şeması, iptal, ortak provider testi. İnceleme için ☀️ Opus. |
+| v0.8.4 İlk gerçek provider | 🌙 Sonnet | 🌙 Sonnet | Kurulum, adaptör ve smoke betiği. Yerel model davranışı beklenmedik çıkarsa ☀️ Opus. |
+| v0.9.1 Koşu servisi ve mimari kaydı | ☀️ Opus | 🌙 Sonnet | Orkestrasyon ve senaryo tanımının yeniden tasarımı. |
+| v0.9.2 İkinci araç ve zor senaryolar | ☀️ Opus | 🌙 Sonnet | Mimarileri gerçekten ayıran senaryo ve evaluator tasarımı. |
+| v0.9.3 Üçüncü mimari | 🌙 Sonnet | 🌙 Sonnet | Kayıt hazırsa ekleme işidir. |
+| v0.9.4 Kontrollü tekrar | ☀️ Opus | 🌙 Sonnet | Bütçe sınırı, durdurma ve istatistik gösterimi tasarımı. |
+| v1.0.1 Paylaşılabilir sürüm | — | 🌙 Sonnet | UI bölme, dışa aktarma, belge ve diyagram. |
+
 ## v0.8.0 — Toparlama
 
 ### ⬜ v0.8.0 Repository ve süreç toparlaması
