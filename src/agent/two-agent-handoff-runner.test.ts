@@ -112,4 +112,40 @@ describe("TwoAgentHandoffRunner", () => {
     expect(finalizer.generateCount).toBe(1);
     expect(analyst.prompts).toHaveLength(1);
   });
+
+  describe("failure codes", () => {
+    const failsWith = async (analyst: ModelProvider, finalizer: ModelProvider, input: string, failureCode: string) => {
+      const failure = await runner(analyst, finalizer).run(input).then(() => undefined, (error: unknown) => error);
+
+      expect(failure).toMatchObject({
+        name: "AgentFailure",
+        failureCode,
+        message: "Agent handoff could not be completed.",
+      });
+      return failure as Error;
+    };
+
+    it("keeps the Analyst's failure category and hides provider details in the message", async () => {
+      const analyst = new RecordingProvider(new Error("private analyst error"));
+      const finalizer = new RecordingProvider({ type: "text", text: "Should not run." });
+
+      const failure = await failsWith(analyst, finalizer, task, "provider_error");
+      expect(failure.message).not.toContain("private");
+    });
+
+    it("keeps the Finalizer's failure category, such as an unavailable tool", async () => {
+      const analyst = new RecordingProvider({ type: "text", text: analystNotes });
+      const finalizer = new RecordingProvider({ type: "tool_call", callId: "c1", toolName: "handoff", input: "x" });
+
+      await failsWith(analyst, finalizer, task, "tool_unavailable");
+    });
+
+    it("reports invalid_handoff for empty Analyst notes and for an empty task", async () => {
+      const emptyNotes = new RecordingProvider({ type: "text", text: " " });
+      const finalizer = new RecordingProvider({ type: "text", text: "Should not run." });
+
+      await failsWith(emptyNotes, finalizer, task, "invalid_handoff");
+      await failsWith(new RecordingProvider({ type: "text", text: analystNotes }), finalizer, "  ", "invalid_handoff");
+    });
+  });
 });

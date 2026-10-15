@@ -394,6 +394,46 @@ describe("ExperimentHistoryStore", () => {
     )).toBe("/home/tester/.local/share/AgentLab/experiments.json");
   });
 
+  describe("failure codes on experiment.failed events", () => {
+    const failedRecord = (failureCode?: unknown): ExperimentHistoryRecord => {
+      const endedAt = "2026-10-01T00:00:01.000Z";
+      const base = historyRecord("failed-run", "failed", endedAt);
+      return {
+        ...base,
+        events: [{
+          experimentId: "failed-run",
+          occurredAt: endedAt,
+          type: "experiment.failed",
+          endedAt,
+          durationMs: 1000,
+          errorMessage: "Agent görevi tamamlayamadı.",
+          ...(failureCode === undefined ? {} : { failureCode }),
+        } as ExperimentHistoryRecord["events"][number]],
+      };
+    };
+
+    it("keeps a valid failure code when saving and reading", async () => {
+      await store.append(failedRecord("tool_unavailable"));
+
+      const [saved] = await store.readAll();
+      expect(saved.events[0]).toMatchObject({ type: "experiment.failed", failureCode: "tool_unavailable" });
+    });
+
+    it("still reads failed events saved before failure codes existed", async () => {
+      await writeFile(store.filePath, JSON.stringify({ schemaVersion: 1, records: [failedRecord()] }), "utf8");
+
+      const [saved] = await store.readAll();
+      expect(saved.events[0]).not.toHaveProperty("failureCode");
+    });
+
+    it.each(["agent_execution_failed", "", 7, null])("rejects an unknown failure code %s", async (code) => {
+      expect(() => store.append(failedRecord(code))).toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
+
+      await writeFile(store.filePath, JSON.stringify({ schemaVersion: 1, records: [failedRecord(code)] }), "utf8");
+      await expect(store.readAll()).rejects.toMatchObject({ code: "invalid_snapshot" });
+    });
+  });
+
   it("rejects duplicate experiment IDs instead of creating duplicate terminal records", async () => {
     const record = historyRecord("run-1", "completed", "2026-10-01T00:00:01.000Z");
     await store.append(record);

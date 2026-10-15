@@ -51,12 +51,16 @@ export function evaluateScenario(
       };
     }
     case "unknown-tool-failure": {
-      const passed = experiment.status === "failed" && lifecycle.lifecycleEventCount === 0;
+      // The failure must be the unavailable-tool category, not any failure (e.g. a provider outage).
+      const passed =
+        experiment.status === "failed" &&
+        experiment.failureCode === "tool_unavailable" &&
+        lifecycle.lifecycleEventCount === 0;
       return {
         passed,
         reason: passed
-          ? "Experiment failed safely before any tool execution."
-          : "Expected the experiment to fail before any tool execution.",
+          ? "Experiment failed safely with tool_unavailable before any tool execution."
+          : "Expected the experiment to fail with tool_unavailable before any tool execution.",
       };
     }
     default:

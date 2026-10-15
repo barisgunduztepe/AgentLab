@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { failureCodeOf } from "../agent/agent-failure";
 import type { ToolLifecycleSignal } from "../agent/single-agent";
 import type { AgentId, AgentLifecycleSignal } from "../agent/two-agent-handoff-runner";
 import type { Experiment, ExperimentEvent, ExperimentOutput } from "./types";
@@ -52,10 +53,11 @@ export async function runExperiment(
       },
     );
     output = response;
-  } catch {
+  } catch (error) {
     const endedAt = new Date().toISOString();
     const durationMs = Date.now() - startTimeMs;
     const errorMessage = "Agent görevi tamamlayamadı.";
+    const failureCode = failureCodeOf(error);
 
     const failedExperiment: Experiment = {
       id,
@@ -65,6 +67,7 @@ export async function runExperiment(
       endedAt,
       durationMs,
       errorMessage,
+      failureCode,
     };
 
     onEvent({
@@ -74,6 +77,7 @@ export async function runExperiment(
       endedAt,
       durationMs,
       errorMessage,
+      failureCode,
     });
 
     return failedExperiment;

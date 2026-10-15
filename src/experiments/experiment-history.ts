@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, posix, win32 } from "node:path";
+import { isFailureCode } from "../agent/agent-failure";
 import type { EvaluationResult, ExperimentEvent } from "./types";
 
 export type HistorySchemaVersion = 1 | 2 | 3;
@@ -389,7 +390,12 @@ function isValidEvent(value: unknown, strictKeys: boolean): value is ExperimentE
       return hasKeys(["endedAt", "durationMs"]) && typeof value.endedAt === "string" &&
         !Number.isNaN(Date.parse(value.endedAt)) && typeof value.durationMs === "number" && Number.isFinite(value.durationMs);
     case "experiment.failed":
-      return hasKeys(["endedAt", "durationMs", "errorMessage"]) && typeof value.endedAt === "string" &&
+      // failureCode is optional: records saved before v0.8.2 have none, but when present it must be a known code.
+      return hasKeys(Object.hasOwn(value, "failureCode")
+          ? ["endedAt", "durationMs", "errorMessage", "failureCode"]
+          : ["endedAt", "durationMs", "errorMessage"]) &&
+        (!Object.hasOwn(value, "failureCode") || isFailureCode(value.failureCode)) &&
+        typeof value.endedAt === "string" &&
         !Number.isNaN(Date.parse(value.endedAt)) && typeof value.durationMs === "number" && Number.isFinite(value.durationMs) &&
         typeof value.errorMessage === "string";
     case "scenario.evaluated":
@@ -428,7 +434,14 @@ function sanitizeEvent(event: ExperimentEvent, strictKeys: boolean): ExperimentE
     case "experiment.completed":
       return { ...base, type: event.type, endedAt: event.endedAt, durationMs: event.durationMs };
     case "experiment.failed":
-      return { ...base, type: event.type, endedAt: event.endedAt, durationMs: event.durationMs, errorMessage: event.errorMessage };
+      return {
+        ...base,
+        type: event.type,
+        endedAt: event.endedAt,
+        durationMs: event.durationMs,
+        errorMessage: event.errorMessage,
+        ...(event.failureCode === undefined ? {} : { failureCode: event.failureCode }),
+      };
     case "scenario.evaluated":
       return { ...base, type: event.type, scenarioId: event.scenarioId, evaluation: { passed: event.evaluation.passed, reason: event.evaluation.reason } };
   }

@@ -1,6 +1,9 @@
+import { AgentFailure, failureCodeOf } from "./agent-failure";
 import type { ModelResponse } from "./model-provider";
 import type { ToolLifecycleSignal } from "./single-agent";
 import { SingleAgent } from "./single-agent";
+
+const HANDOFF_FAILURE_MESSAGE = "Agent handoff could not be completed.";
 
 export interface HandoffPayload {
   task: string;
@@ -33,7 +36,7 @@ export class TwoAgentHandoffRunner {
     onLifecycle?: (signal: AgentLifecycleSignal) => void,
   ): Promise<Extract<ModelResponse, { type: "text" }>> {
     if (task.trim().length === 0) {
-      throw new Error("Agent handoff could not be completed.");
+      throw new AgentFailure("invalid_handoff", { message: HANDOFF_FAILURE_MESSAGE });
     }
 
     onLifecycle?.({ type: "agent.lifecycle", agentId: "analyst", phase: "started" });
@@ -44,14 +47,15 @@ export class TwoAgentHandoffRunner {
         buildAnalystAssignment(task),
         (signal) => onToolLifecycle?.({ ...signal, agentId: "analyst" }),
       );
-    } catch {
+    } catch (error) {
       onLifecycle?.({
         type: "agent.lifecycle",
         agentId: "analyst",
         phase: "failed",
         failureCode: "agent_execution_failed",
       });
-      throw new Error("Agent handoff could not be completed.");
+      // The inner agent's category (e.g. tool_unavailable) is kept so the experiment can report why it failed.
+      throw new AgentFailure(failureCodeOf(error), { message: HANDOFF_FAILURE_MESSAGE, cause: error });
     }
 
     onLifecycle?.({
@@ -69,7 +73,7 @@ export class TwoAgentHandoffRunner {
         toAgentId: "finalizer",
         failureCode: "invalid_handoff",
       });
-      throw new Error("Agent handoff could not be completed.");
+      throw new AgentFailure("invalid_handoff", { message: HANDOFF_FAILURE_MESSAGE });
     }
 
     onLifecycle?.({
@@ -91,14 +95,14 @@ export class TwoAgentHandoffRunner {
         output: finalizerResponse.text,
       });
       return finalizerResponse;
-    } catch {
+    } catch (error) {
       onLifecycle?.({
         type: "agent.lifecycle",
         agentId: "finalizer",
         phase: "failed",
         failureCode: "agent_execution_failed",
       });
-      throw new Error("Agent handoff could not be completed.");
+      throw new AgentFailure(failureCodeOf(error), { message: HANDOFF_FAILURE_MESSAGE, cause: error });
     }
   }
 }

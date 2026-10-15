@@ -76,6 +76,10 @@ function eventLabel(event: ExperimentEvent): string {
     return `Handoff failed — ${event.failureCode}`;
   }
 
+  if (event.type === "experiment.failed" && event.failureCode) {
+    return `${event.type} — ${event.failureCode}`;
+  }
+
   if ("agentId" in event && event.agentId) {
     return `${event.type} — ${event.agentId === "analyst" ? "Analyst" : "Finalizer"} · ${event.toolName}`;
   }

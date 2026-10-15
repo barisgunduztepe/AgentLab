@@ -269,6 +269,7 @@ describe("POST /api/experiments fixed scenarios", () => {
     expect(events.at(-2)).toMatchObject({
       type: "experiment.failed",
       errorMessage: "Agent görevi tamamlayamadı.",
+      failureCode: "tool_unavailable",
     });
     expect(JSON.stringify(events)).not.toContain("weather_lookup");
     expect(JSON.stringify(events)).not.toContain("scenario-unknown-tool");
@@ -277,7 +278,7 @@ describe("POST /api/experiments fixed scenarios", () => {
       scenarioId: "unknown-tool-failure",
       evaluation: {
         passed: true,
-        reason: "Experiment failed safely before any tool execution.",
+        reason: "Experiment failed safely with tool_unavailable before any tool execution.",
       },
     });
     expect(events.filter((event) => event.type === "scenario.evaluated")).toHaveLength(1);
@@ -306,6 +307,8 @@ describe("POST /api/experiments fixed scenarios", () => {
     expect(records[0].status).toBe("failed");
     expect(records[0].errorMessage).toBe("Agent görevi tamamlayamadı.");
     expect(records[0]).not.toHaveProperty("output");
+    expect(records[0].events.at(-2)).toMatchObject({ type: "experiment.failed", failureCode: "tool_unavailable" });
+    expect(records[0].evaluation).toMatchObject({ passed: true });
   });
 
   it("keeps successful execution successful if local history persistence fails", async () => {

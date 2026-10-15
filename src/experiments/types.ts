@@ -1,4 +1,7 @@
+import type { FailureCode } from "../agent/agent-failure";
 import type { ModelResponse } from "../agent/model-provider";
+
+export type { FailureCode };
 
 export type ExperimentAgentId = "analyst" | "finalizer";
 
@@ -33,6 +36,8 @@ export interface Experiment {
   durationMs?: number;
   output?: ExperimentOutput;
   errorMessage?: string;
+  /** Why a failed experiment failed. Absent on completed experiments. */
+  failureCode?: FailureCode;
 }
 
 interface ExperimentEventBase {
@@ -72,6 +77,8 @@ export type ExperimentEvent =
       endedAt: string;
       durationMs: number;
       errorMessage: string;
+      /** Optional because records saved before v0.8.2 have no failure code. */
+      failureCode?: FailureCode;
     })
   | (ExperimentEventBase & {
       type: "scenario.evaluated";

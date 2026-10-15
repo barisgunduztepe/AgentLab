@@ -207,6 +207,9 @@ describe("runExperiment", () => {
       "experiment.failed",
     ]);
     expect(events[3]).toMatchObject({ type: "agent.lifecycle", agentId: "analyst", phase: "failed" });
+    // The inner category survives the generic handoff error, and the user-facing message stays generic.
+    expect(experiment.failureCode).toBe("tool_unavailable");
+    expect(events[4]).toMatchObject({ type: "experiment.failed", failureCode: "tool_unavailable" });
     expect(events.some((event) => event.type.startsWith("tool."))).toBe(false);
     const serialized = JSON.stringify(events);
     expect(serialized).not.toContain(rawToolName);
@@ -266,6 +269,8 @@ describe("runExperiment", () => {
       "experiment.failed",
     ]);
     expect(events[3]).toMatchObject({ type: "tool.failed", toolName: "calculator" });
+    expect(experiment.failureCode).toBe("tool_failed");
+    expect(events[4]).toMatchObject({ type: "experiment.failed", failureCode: "tool_failed" });
     expect(JSON.stringify(experiment)).not.toContain(rawToolError);
     expect(JSON.stringify(events)).not.toContain(rawToolError);
   });
@@ -439,7 +444,30 @@ describe("runExperiment", () => {
     expect(events[2]).toMatchObject({
       type: "experiment.failed",
       errorMessage: "Agent görevi tamamlayamadı.",
+      failureCode: "provider_error",
     });
+    expect(experiment.failureCode).toBe("provider_error");
     expect(JSON.stringify(events)).not.toContain(rawProviderError);
+  });
+
+  it("falls back to the unknown failure code for errors that are not agent failures", async () => {
+    const events: ExperimentEvent[] = [];
+    const agent = { run: async () => { throw new Error("raw unexpected error"); } };
+
+    const experiment = await runExperiment("Fail unexpectedly.", agent, (event) => events.push(event));
+
+    expect(experiment.failureCode).toBe("unknown");
+    expect(events.at(-1)).toMatchObject({ type: "experiment.failed", failureCode: "unknown" });
+    expect(JSON.stringify(events)).not.toContain("raw unexpected error");
+  });
+
+  it("does not attach a failure code to completed experiments", async () => {
+    const events: ExperimentEvent[] = [];
+    const agent = { run: async () => ({ type: "text" as const, text: "Done." }) };
+
+    const experiment = await runExperiment("Finish.", agent, (event) => events.push(event));
+
+    expect(experiment).not.toHaveProperty("failureCode");
+    expect(events.some((event) => "failureCode" in event)).toBe(false);
   });
 });

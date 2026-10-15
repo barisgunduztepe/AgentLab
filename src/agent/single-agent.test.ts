@@ -201,4 +201,68 @@ describe("SingleAgent", () => {
       "tool.started", "tool.completed",
     ]);
   });
+
+  describe("failure codes", () => {
+    const failsWith = (agent: SingleAgent, task: string, failureCode: string) =>
+      expect(agent.run(task)).rejects.toMatchObject({ name: "AgentFailure", failureCode });
+
+    it("classifies a failing deterministic arithmetic tool as tool_failed and keeps the tool message", async () => {
+      const agent = new SingleAgent(new FakeModelProvider(), [new CalculatorTool()]);
+
+      await failsWith(agent, "5 / 0", "tool_failed");
+      await expect(agent.run("5 / 0")).rejects.toThrow("Division by zero is not allowed.");
+    });
+
+    it("classifies a failing tool in the model loop as tool_failed with the original cause", async () => {
+      const cause = new Error("tool exploded");
+      const failingTool: Tool = { name: "counted", description: "Fails.", execute: async () => { throw cause; } };
+      const agent = new SingleAgent(
+        new FakeModelProvider([{ type: "tool_call", callId: "call-1", toolName: "counted", input: "x" }]),
+        [failingTool],
+      );
+
+      await failsWith(agent, "Use the tool.", "tool_failed");
+      await expect(agent.run("Use the tool.")).rejects.toMatchObject({ cause: expect.anything() });
+    });
+
+    it("classifies a request for an unregistered tool as tool_unavailable", async () => {
+      const agent = new SingleAgent(
+        new FakeModelProvider([{ type: "tool_call", callId: "call-1", toolName: "not_registered", input: "x" }]),
+        [new CalculatorTool()],
+      );
+
+      await failsWith(agent, "Look something up.", "tool_unavailable");
+    });
+
+    it("classifies a fourth tool request as tool_limit", async () => {
+      const countedTool: Tool = { name: "counted", description: "Counts.", execute: async (input) => `result-${input}` };
+      const agent = new SingleAgent(new FakeModelProvider(fourthToolRequestFixture), [countedTool]);
+
+      await failsWith(agent, "Use the counted tool repeatedly.", "tool_limit");
+    });
+
+    it("classifies a malformed tool call as invalid_tool_call", async () => {
+      const agent = new SingleAgent(
+        new FakeModelProvider([{ type: "tool_call", callId: " ", toolName: "calculator", input: "1 + 1" }]),
+        [new CalculatorTool()],
+      );
+
+      await failsWith(agent, "Use the calculator.", "invalid_tool_call");
+    });
+
+    it("classifies provider failures, including during continuation, as provider_error without leaking details", async () => {
+      const failingProvider: ModelProvider = {
+        generateResponse: async () => { throw new Error("private provider detail"); },
+        continueAfterToolCall: unusedContinuation,
+      };
+      await failsWith(new SingleAgent(failingProvider, []), "Say hello.", "provider_error");
+      await expect(new SingleAgent(failingProvider, []).run("Say hello.")).rejects.not.toThrow("private provider detail");
+
+      const failingContinuation: ModelProvider = {
+        generateResponse: async () => ({ type: "tool_call", callId: "call-1", toolName: "calculator", input: "1 + 1" }),
+        continueAfterToolCall: async () => { throw new Error("private continuation detail"); },
+      };
+      await failsWith(new SingleAgent(failingContinuation, [new CalculatorTool()]), "Use the calculator.", "provider_error");
+    });
+  });
 });

@@ -5,6 +5,7 @@ import type { Experiment, ExperimentEvent } from "./types";
 function experiment(
   status: Experiment["status"],
   text?: string,
+  failureCode?: Experiment["failureCode"],
 ): Experiment {
   return {
     id: "experiment-1",
@@ -12,6 +13,7 @@ function experiment(
     status,
     startedAt: "2026-10-01T00:00:00.000Z",
     ...(status === "completed" ? { output: { type: "text" as const, text: text ?? "" } } : {}),
+    ...(failureCode === undefined ? {} : { failureCode }),
   };
 }
 
@@ -103,17 +105,24 @@ describe("evaluateScenario", () => {
   });
 
   it("passes safe failure while keeping execution failure distinct from evaluation", () => {
-    const result = evaluateScenario("unknown-tool-failure", experiment("failed"), []);
+    const result = evaluateScenario("unknown-tool-failure", experiment("failed", undefined, "tool_unavailable"), []);
 
     expect(result).toEqual({
       passed: true,
-      reason: "Experiment failed safely before any tool execution.",
+      reason: "Experiment failed safely with tool_unavailable before any tool execution.",
     });
     expect(evaluateScenario(
       "unknown-tool-failure",
-      experiment("failed"),
+      experiment("failed", undefined, "tool_unavailable"),
       toolEvents("tool.started", "tool.failed"),
     )?.passed).toBe(false);
+  });
+
+  it("does not pass the safe-failure scenario for a failure with a different cause", () => {
+    for (const failureCode of ["provider_error", "tool_failed", "tool_limit", "unknown", undefined] as const) {
+      expect(evaluateScenario("unknown-tool-failure", experiment("failed", undefined, failureCode), [])?.passed)
+        .toBe(false);
+    }
   });
 
   it("does not pass the safe-failure scenario when execution completed", () => {
