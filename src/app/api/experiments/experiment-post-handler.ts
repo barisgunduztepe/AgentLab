@@ -6,7 +6,9 @@ import { getHandoffFakeFixtures } from "../../../experiments/handoff-fake-fixtur
 import {
   experimentHistoryStore,
   type ExperimentHistoryStore,
+  type ExperimentRunMetadata,
 } from "../../../experiments/experiment-history";
+import { createRunMetadata } from "../../../experiments/run-metadata";
 import { toExperimentHistoryRecord } from "../../../experiments/history-record";
 import { runExperiment } from "../../../experiments/run-experiment";
 import { evaluateScenario } from "../../../experiments/scenario-evaluator";
@@ -58,6 +60,7 @@ export function createExperimentPostHandler(historyStore: Pick<ExperimentHistory
     }
 
     let modelProviders: ModelProvider[];
+    let run: ExperimentRunMetadata;
 
     try {
       if (scenarioId === "analyst-finalizer-handoff") {
@@ -74,6 +77,9 @@ export function createExperimentPostHandler(historyStore: Pick<ExperimentHistory
           : undefined;
         modelProviders = [createModelProvider(fakeResponses ? { fakeResponses } : undefined)];
       }
+      run = createRunMetadata(scenarioId === "analyst-finalizer-handoff"
+        ? { architecture: "handoff", agentConfigurationId: "handoff-default" }
+        : { architecture: "single", agentConfigurationId: "baseline" });
     } catch {
       return Response.json({ error: "Experiment provider is not configured." }, { status: 500 });
     }
@@ -114,7 +120,7 @@ export function createExperimentPostHandler(historyStore: Pick<ExperimentHistory
           }
 
           try {
-            await historyStore.append(toExperimentHistoryRecord(experiment, scenarioId, evaluation, capturedEvents));
+            await historyStore.append(toExperimentHistoryRecord(experiment, scenarioId, evaluation, capturedEvents, run));
           } catch {
             // Execution succeeded or failed independently; keep storage details and user data private.
             console.error("AgentLab experiment history could not be saved.");

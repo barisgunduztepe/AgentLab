@@ -19,6 +19,14 @@ export function createComparisonModelProviders(fixtures?: {
   ];
 }
 
+/** Provider kind and model name for history records. Never includes keys or other credentials. */
+export function describeConfiguredProvider(): { provider: "fake" | "openai" | "gemini"; model?: string } {
+  const configuration = resolveConfiguration();
+  return configuration.provider === "fake"
+    ? { provider: "fake" }
+    : { provider: configuration.provider, model: configuration.model };
+}
+
 type ProviderConfiguration =
   | { provider: "fake" }
   | { provider: "openai" | "gemini"; apiKey: string; model: string };

@@ -7,7 +7,7 @@ import type { EvaluationResult, ExperimentEvent } from "./types";
 export type HistorySchemaVersion = 1 | 2 | 3;
 export type ExperimentRunProvider = "fake" | "openai" | "gemini";
 export type ExperimentArchitecture = "single" | "handoff";
-export type AgentConfigurationId = "baseline" | "structured" | "handoff-default";
+export type RunAgentConfigurationId = "baseline" | "structured" | "handoff-default";
 
 /** How a run was produced. Never holds secrets: only provider kind, model name, agent setup, and code version. */
 export interface ExperimentRunMetadata {
@@ -15,7 +15,7 @@ export interface ExperimentRunMetadata {
   /** Required for real providers; absent for the fake provider. */
   model?: string;
   architecture: ExperimentArchitecture;
-  agentConfigurationId: AgentConfigurationId;
+  agentConfigurationId: RunAgentConfigurationId;
   agentConfigurationVersion: number;
   /** Short Git commit of the running code, when it could be determined. */
   commit?: string;

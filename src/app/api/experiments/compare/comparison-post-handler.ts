@@ -5,7 +5,9 @@ import { SingleAgent } from "../../../../agent/single-agent";
 import {
   experimentHistoryStore,
   type ExperimentHistoryStore,
+  type ExperimentRunMetadata,
 } from "../../../../experiments/experiment-history";
+import { AGENT_CONFIGURATION_VERSIONS, createRunMetadata } from "../../../../experiments/run-metadata";
 import { evaluateScenario } from "../../../../experiments/scenario-evaluator";
 import { getComparisonFakeResponses } from "../../../../experiments/scenario-fake-fixtures";
 import { getScenarioById } from "../../../../experiments/scenarios";
@@ -71,6 +73,19 @@ export function createComparisonPostHandler(
       return Response.json({ error: "Experiment provider is not configured." }, { status: 500 });
     }
 
+    let describeRun: (configurationId: "baseline" | "structured") => ExperimentRunMetadata;
+    try {
+      // Resolve provider/model/commit once so both runs of a comparison record the same values.
+      const shared = createRunMetadata({ architecture: "single", agentConfigurationId: "baseline" });
+      describeRun = (configurationId) => ({
+        ...shared,
+        agentConfigurationId: configurationId,
+        agentConfigurationVersion: AGENT_CONFIGURATION_VERSIONS[configurationId],
+      });
+    } catch {
+      return Response.json({ error: "Experiment provider is not configured." }, { status: 500 });
+    }
+
     const comparisonId = options.createComparisonId?.() ?? randomUUID();
     const configurations = ["baseline", "structured"] as const;
     const runs: ComparisonRunResult[] = [];
@@ -88,6 +103,7 @@ export function createComparisonPostHandler(
           scenarioId,
           evaluation,
           events,
+          describeRun(configurationId),
           { comparisonId, configurationId },
         ));
         historySaved = true;

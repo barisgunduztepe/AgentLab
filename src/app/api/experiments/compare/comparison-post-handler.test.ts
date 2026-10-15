@@ -90,9 +90,18 @@ describe("POST /api/experiments/compare", () => {
     expect(saved.map(({ comparisonId, configurationId, scenarioId, task, schemaVersion }) => ({
       comparisonId, configurationId, scenarioId, task, schemaVersion,
     }))).toEqual([
-      { comparisonId: "comparison-fixed", configurationId: "baseline", scenarioId: "direct-text", task: "Write three short sentences about why Istanbul is historically important.", schemaVersion: 2 },
-      { comparisonId: "comparison-fixed", configurationId: "structured", scenarioId: "direct-text", task: "Write three short sentences about why Istanbul is historically important.", schemaVersion: 2 },
+      { comparisonId: "comparison-fixed", configurationId: "baseline", scenarioId: "direct-text", task: "Write three short sentences about why Istanbul is historically important.", schemaVersion: 3 },
+      { comparisonId: "comparison-fixed", configurationId: "structured", scenarioId: "direct-text", task: "Write three short sentences about why Istanbul is historically important.", schemaVersion: 3 },
     ]);
+    // Both runs record the same provider and commit, and differ only in the agent configuration.
+    const [baselineRun, structuredRun] = saved.map(({ run }) => run!);
+    expect(baselineRun).toMatchObject({
+      provider: "fake", architecture: "single", agentConfigurationId: "baseline", agentConfigurationVersion: 1,
+    });
+    expect(structuredRun).toMatchObject({
+      provider: "fake", architecture: "single", agentConfigurationId: "structured", agentConfigurationVersion: 1,
+    });
+    expect({ ...baselineRun, agentConfigurationId: "x" }).toEqual({ ...structuredRun, agentConfigurationId: "x" });
   });
 
   it("executes structured after a baseline failure and rejects scenarios outside the fixed comparable set", async () => {

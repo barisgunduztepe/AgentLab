@@ -1,4 +1,4 @@
-import type { ExperimentHistoryRecord } from "./experiment-history";
+import type { ExperimentHistoryRecord, ExperimentRunMetadata } from "./experiment-history";
 import type { EvaluationResult, Experiment, ExperimentEvent } from "./types";
 
 export function toExperimentHistoryRecord(
@@ -6,6 +6,7 @@ export function toExperimentHistoryRecord(
   scenarioId: string | undefined,
   evaluation: EvaluationResult | undefined,
   events: ExperimentEvent[],
+  run: ExperimentRunMetadata,
   comparison?: { comparisonId: string; configurationId: "baseline" | "structured" },
 ): ExperimentHistoryRecord {
   if (experiment.status === "running" || !experiment.endedAt || experiment.durationMs === undefined) {
@@ -13,7 +14,7 @@ export function toExperimentHistoryRecord(
   }
 
   return {
-    schemaVersion: comparison ? 2 : 1,
+    schemaVersion: 3,
     id: experiment.id,
     task: experiment.task,
     status: experiment.status,
@@ -24,6 +25,7 @@ export function toExperimentHistoryRecord(
     ...(experiment.status === "completed" && experiment.output ? { output: experiment.output } : {}),
     ...(experiment.status === "failed" && experiment.errorMessage ? { errorMessage: experiment.errorMessage } : {}),
     ...(evaluation === undefined ? {} : { evaluation }),
+    run,
     ...(comparison === undefined ? {} : comparison),
     events: [...events],
   };

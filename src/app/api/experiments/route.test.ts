@@ -101,11 +101,15 @@ describe("POST /api/experiments fixed scenarios", () => {
     const records = await historyStore.readAll();
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 3,
       task: "Say hello.",
       status: "completed",
       output: { type: "text", text: "[Fake Model] Task received: Say hello." },
+      run: { provider: "fake", architecture: "single", agentConfigurationId: "baseline", agentConfigurationVersion: 1 },
     });
+    expect(records[0].run).not.toHaveProperty("model");
+    expect(records[0].run?.commit ?? "0000000").toMatch(/^[0-9a-f]{7,40}$/);
+    expect(records[0]).not.toHaveProperty("comparisonId");
     expect(records[0]).not.toHaveProperty("scenarioId");
     expect(records[0]).not.toHaveProperty("evaluation");
   });
@@ -242,6 +246,10 @@ describe("POST /api/experiments fixed scenarios", () => {
 
     const [record] = await historyStore.readAll();
     expect(record.scenarioId).toBe("analyst-finalizer-handoff");
+    expect(record).toMatchObject({
+      schemaVersion: 3,
+      run: { provider: "fake", architecture: "handoff", agentConfigurationId: "handoff-default", agentConfigurationVersion: 1 },
+    });
     expect(record).not.toHaveProperty("evaluation");
     expect(record.events.some((event) => event.type === "scenario.evaluated")).toBe(false);
   });
