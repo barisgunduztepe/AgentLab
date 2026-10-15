@@ -3,3 +3,29 @@ export interface Tool {
   description: string;
   execute(input: string): Promise<string>;
 }
+
+type ParameterSchema = {
+  type: "string" | "number" | "integer" | "boolean";
+  description?: string;
+  enum?: readonly (string | number | boolean)[];
+};
+
+/** Deliberately limited JSON Schema subset shared by every adapter. */
+export interface ToolParametersSchema {
+  type: "object";
+  properties: Record<string, ParameterSchema>;
+  required: readonly string[];
+  additionalProperties: false;
+}
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: ToolParametersSchema;
+}
+
+export interface SchemaTool {
+  definition: ToolDefinition;
+  validateInput(input: unknown): boolean;
+  execute(input: import("../agent/model-completion").JsonObject, options: { signal?: AbortSignal }): Promise<string>;
+}

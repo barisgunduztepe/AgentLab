@@ -1,12 +1,11 @@
 import type { FailureCode } from "../agent/agent-failure";
-import type { ModelResponse } from "../agent/model-provider";
 
 export type { FailureCode };
 
 export type ExperimentAgentId = "analyst" | "finalizer";
 
 export type ExperimentStatus = "running" | "completed" | "failed";
-export type ExperimentOutput = Extract<ModelResponse, { type: "text" }>;
+export type ExperimentOutput = { type: "text"; text: string };
 
 export interface EvaluationResult {
   passed: boolean;

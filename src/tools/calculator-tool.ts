@@ -1,4 +1,5 @@
-import type { Tool } from "./tool";
+import type { Tool, ToolDefinition } from "./tool";
+import type { JsonObject } from "../agent/model-completion";
 
 const MAX_NESTING_DEPTH = 32;
 
@@ -7,7 +8,29 @@ export class CalculatorTool implements Tool {
   description =
     "Evaluates basic arithmetic expressions with +, -, *, /, and parentheses.";
 
-  async execute(input: string): Promise<string> {
+  definition: ToolDefinition = {
+    name: this.name,
+    description: this.description,
+    parameters: {
+      type: "object",
+      properties: { expression: { type: "string", description: "The arithmetic expression to evaluate." } },
+      required: ["expression"],
+      additionalProperties: false,
+    },
+  };
+
+  validateInput(input: unknown): boolean {
+    return typeof input === "object" && input !== null && !Array.isArray(input) &&
+      Object.keys(input).length === 1 && "expression" in input && typeof input.expression === "string";
+  }
+
+  // Temporary string bridge until the agent/provider migration in the next commit.
+  async execute(value: string | JsonObject, _options?: { signal?: AbortSignal }): Promise<string> {
+    void _options;
+    if (typeof value !== "string" && !this.validateInput(value)) {
+      throw new Error("Invalid calculator arguments.");
+    }
+    const input = typeof value === "string" ? value : value.expression;
     if (typeof input !== "string" || input.trim().length === 0) {
       throw new Error("Invalid arithmetic expression.");
     }
