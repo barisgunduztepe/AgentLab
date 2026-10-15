@@ -11,18 +11,12 @@ import {
 import { AGENT_CONFIGURATION_VERSIONS, createRunMetadata } from "../../../../experiments/run-metadata";
 import { evaluateScenario } from "../../../../experiments/scenario-evaluator";
 import { getComparisonFakeResponses } from "../../../../experiments/scenario-fake-fixtures";
-import { getScenarioById } from "../../../../experiments/scenarios";
+import { comparisonConfigurations, getScenarioById } from "../../../../experiments/scenarios";
 import type { EvaluationResult, Experiment, ExperimentEvent } from "../../../../experiments/types";
 import { toExperimentHistoryRecord } from "../../../../experiments/history-record";
 import { CalculatorTool } from "../../../../tools/calculator-tool";
 import { runExperiment } from "../../../../experiments/run-experiment";
 
-const COMPARABLE_SCENARIO_IDS = new Set([
-  "direct-text",
-  "calculator-once",
-  "calculator-three-steps",
-  "unknown-tool-failure",
-]);
 
 interface ComparisonRunResult {
   configurationId: "baseline" | "structured";
@@ -61,7 +55,7 @@ export function createComparisonPostHandler(
 
     const scenarioId = ((body as Record<string, string>).scenarioId).trim();
     const scenario = getScenarioById(scenarioId);
-    if (!scenario || !COMPARABLE_SCENARIO_IDS.has(scenarioId)) {
+    if (!scenario || comparisonConfigurations(scenario).length !== 2) {
       return Response.json({ error: "This scenario cannot be compared." }, { status: 400 });
     }
 

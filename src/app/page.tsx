@@ -8,7 +8,7 @@ import type {
   ExperimentRunMetadata,
 } from "@/experiments/experiment-history";
 import { describeRunForDisplay } from "@/experiments/run-label";
-import { SCENARIOS } from "@/experiments/scenarios";
+import type { PublicScenario } from "@/experiments/catalog";
 import { modelMeasurementLabel } from "@/experiments/model-event-label";
 
 type UiStatus = ExperimentStatus | "idle";
@@ -127,6 +127,18 @@ function ExperimentEventList({ events, emptyMessage }: { events: ExperimentEvent
 }
 
 export default function Home() {
+  const [scenarios, setScenarios] = useState<PublicScenario[]>([]);
+  const [catalogError, setCatalogError] = useState(false);
+  const [catalogRevision, setCatalogRevision] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/experiments", { signal: controller.signal })
+      .then(async (response) => { if (!response.ok) throw new Error(); return await response.json() as { scenarios: PublicScenario[] }; })
+      .then((body) => { if (!controller.signal.aborted) { setScenarios(body.scenarios); setCatalogError(false); } })
+      .catch(() => { if (!controller.signal.aborted) setCatalogError(true); });
+    return () => controller.abort();
+  }, [catalogRevision]);
+  const comparableScenarioIds = new Set<string>(scenarios.filter((s) => s.comparisonConfigurations.length === 2).map((s) => s.id));
   const [task, setTask] = useState("");
   const [selectedScenarioId, setSelectedScenarioId] = useState("");
   const [status, setStatus] = useState<UiStatus>("idle");
@@ -379,7 +391,7 @@ export default function Home() {
   }
 
   const isRunning = status === "running";
-  const selectedScenario = SCENARIOS.find((scenario) => scenario.id === selectedScenarioId);
+  const selectedScenario = scenarios.find((scenario) => scenario.id === selectedScenarioId);
 
   return (
     <main
@@ -410,6 +422,7 @@ export default function Home() {
         <label htmlFor="experiment-mode" style={{ display: "block", marginBottom: 8, fontWeight: 600 }}>
           Experiment type
         </label>
+        {catalogError && <p role="alert">Scenario catalog is unavailable. <button type="button" onClick={() => setCatalogRevision((value) => value + 1)}>Retry catalog</button></p>}
         <select
           id="experiment-mode"
           value={selectedScenarioId}
@@ -419,7 +432,7 @@ export default function Home() {
             setComparisonResult(null);
             setComparisonError(null);
           }}
-          disabled={isRunning}
+          disabled={isRunning || comparisonLoading || scenarios.length === 0}
           style={{
             display: "block",
             width: "100%",
@@ -431,7 +444,7 @@ export default function Home() {
           }}
         >
           <option value="">Custom task</option>
-          {SCENARIOS.map((scenario) => (
+          {scenarios.map((scenario) => (
             <option key={scenario.id} value={scenario.id}>{scenario.title}</option>
           ))}
         </select>
@@ -452,7 +465,7 @@ export default function Home() {
               onChange={(event) => setTask(event.target.value)}
               placeholder="Describe what the agent should do..."
               rows={5}
-              disabled={isRunning}
+              disabled={isRunning || comparisonLoading || scenarios.length === 0}
               style={{
                 boxSizing: "border-box",
                 width: "100%",
@@ -659,7 +672,7 @@ export default function Home() {
         ) : (
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
             {historySummaries.map((summary) => {
-              const scenario = SCENARIOS.find((item) => item.id === summary.scenarioId);
+              const scenario = scenarios.find((item) => item.id === summary.scenarioId);
               return (
                 <li key={summary.id} style={{ marginBottom: 8 }}>
                   <button
@@ -710,7 +723,7 @@ export default function Home() {
             ) : historicalExperiment ? (
               <>
                 <h3 style={{ margin: "0 0 8px", fontSize: 18 }}>
-                  {SCENARIOS.find((item) => item.id === historicalExperiment.scenarioId)?.title ??
+                  {scenarios.find((item) => item.id === historicalExperiment.scenarioId)?.title ??
                     historicalExperiment.scenarioId ?? "Custom task"}
                 </h3>
                 {historicalExperiment.configurationId && (
@@ -749,9 +762,3 @@ export default function Home() {
   );
 }
 
-const comparableScenarioIds = new Set([
-  "direct-text",
-  "calculator-once",
-  "calculator-three-steps",
-  "unknown-tool-failure",
-]);
