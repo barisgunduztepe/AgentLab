@@ -576,17 +576,28 @@ describe("runExperiment", () => {
       await runExperiment("private task text", agent, (event) => events.push(event));
 
       const modelEvents = JSON.stringify(events.filter((event) => event.type.startsWith("model.")));
-      for (const secret of ["private task text", "private final answer", "private-call-id", "6 * 7", "42"]) {
+      // The tool result "42" is not searched for: event IDs and timestamps can contain those digits by chance.
+      for (const secret of ["private task text", "private final answer", "private-call-id", "6 * 7"]) {
         expect(modelEvents).not.toContain(secret);
       }
     });
 
-    it("emits no model call events when the deterministic calculator path solves the task", async () => {
+    it("shows a skipped model, not a model call, when the deterministic calculator path solves the task", async () => {
       const events: ExperimentEvent[] = [];
 
       await runExperiment("12 * 8", new SingleAgent(new FakeModelProvider(), [new CalculatorTool()]), (event) => events.push(event));
 
-      expect(events.some((event) => event.type.startsWith("model."))).toBe(false);
+      expect(events.map((event) => event.type)).toEqual([
+        "experiment.started",
+        "agent.started",
+        "model.skipped",
+        "tool.started",
+        "tool.completed",
+        "agent.completed",
+        "experiment.completed",
+      ]);
+      expect(events[2]).toMatchObject({ type: "model.skipped", reason: "deterministic_arithmetic" });
+      expect(events.some((event) => event.type === "model.requested" || event.type === "model.responded")).toBe(false);
     });
   });
 });

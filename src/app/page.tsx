@@ -80,9 +80,13 @@ function eventLabel(event: ExperimentEvent): string {
     return `${event.type} — ${event.failureCode}`;
   }
 
-  if (event.type === "model.requested" || event.type === "model.responded") {
+  if (event.type === "model.requested" || event.type === "model.responded" || event.type === "model.skipped") {
     const agent = event.agentId ? `${event.agentId === "analyst" ? "Analyst" : "Finalizer"} · ` : "";
-    const detail = event.type === "model.requested" ? event.purpose : `${event.outcome} · ${event.durationMs} ms`;
+    const detail = event.type === "model.requested"
+      ? event.purpose
+      : event.type === "model.responded"
+        ? `${event.outcome} · ${event.durationMs} ms`
+        : "no model call (deterministic arithmetic)";
     return `${event.type} — ${agent}${detail}`;
   }
 

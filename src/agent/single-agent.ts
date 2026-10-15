@@ -18,7 +18,9 @@ export type ToolLifecycleSignal =
  */
 export type ModelCallSignal =
   | { type: "model.requested"; purpose: "initial" | "after_tool" }
-  | { type: "model.responded"; outcome: "text" | "tool_call" | "error"; durationMs: number };
+  | { type: "model.responded"; outcome: "text" | "tool_call" | "error"; durationMs: number }
+  /** The task was solved without asking the model (a plain arithmetic task goes straight to the calculator tool). */
+  | { type: "model.skipped"; reason: "deterministic_arithmetic" };
 
 export class SingleAgent {
   constructor(
@@ -35,6 +37,7 @@ export class SingleAgent {
     const calculatorTool = this.tools.find((tool) => tool.name === "calculator");
 
     if (calculatorTool && isSimpleArithmeticExpression(task)) {
+      onModelCall?.({ type: "model.skipped", reason: "deterministic_arithmetic" });
       onToolLifecycle?.({ type: "tool.started", toolName: calculatorTool.name });
 
       let output: string;

@@ -24,6 +24,7 @@ export type ExperimentEventType =
   | "tool.failed"
   | "model.requested"
   | "model.responded"
+  | "model.skipped"
   | "agent.completed"
   | "experiment.completed"
   | "experiment.failed"
@@ -60,6 +61,7 @@ export type ExperimentEvent =
       durationMs: number;
       agentId?: ExperimentAgentId;
     })
+  | (ExperimentEventBase & { type: "model.skipped"; reason: "deterministic_arithmetic"; agentId?: ExperimentAgentId })
   | (ExperimentEventBase & { type: "agent.lifecycle"; agentId: ExperimentAgentId; phase: "started" })
   | (ExperimentEventBase & { type: "agent.lifecycle"; agentId: ExperimentAgentId; phase: "completed"; output: string })
   | (ExperimentEventBase & {

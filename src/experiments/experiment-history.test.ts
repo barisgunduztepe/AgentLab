@@ -415,6 +415,15 @@ describe("ExperimentHistoryStore", () => {
       await expect(store.getById("model-run")).resolves.toEqual(record);
     });
 
+    it("stores a model.skipped event and rejects an unknown skip reason", async () => {
+      const skipped = recordWith({ type: "model.skipped", reason: "deterministic_arithmetic" });
+      await store.append(skipped);
+      await expect(store.getById("model-run")).resolves.toEqual(skipped);
+
+      expect(() => store.append(recordWith({ type: "model.skipped", reason: "cached" })))
+        .toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
+    });
+
     it.each([
       ["unknown purpose", { type: "model.requested", purpose: "retry" }],
       ["missing purpose", { type: "model.requested" }],

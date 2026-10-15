@@ -230,9 +230,11 @@ describe("SingleAgent", () => {
 
       await agent.run("Use the calculator.", undefined, onModelCall);
 
-      expect(signals.map((signal) => signal.type === "model.requested" ? signal.purpose : signal.outcome)).toEqual([
-        "initial", "tool_call", "after_tool", "text",
-      ]);
+      expect(signals.map((signal) => {
+        if (signal.type === "model.requested") return signal.purpose;
+        if (signal.type === "model.responded") return signal.outcome;
+        return signal.type;
+      })).toEqual(["initial", "tool_call", "after_tool", "text"]);
     });
 
     it("reports a failed call as an error outcome and still fails with provider_error", async () => {
@@ -264,13 +266,36 @@ describe("SingleAgent", () => {
       }
     });
 
-    it("does not report a model call when the task is solved by the deterministic calculator path", async () => {
+    it("reports that the model was skipped, instead of a model call, for a deterministic arithmetic task", async () => {
       const { signals, onModelCall } = collect();
       const agent = new SingleAgent(new FakeModelProvider(), [new CalculatorTool()]);
 
       await agent.run("12 * 8", undefined, onModelCall);
 
-      expect(signals).toEqual([]);
+      expect(signals).toEqual([{ type: "model.skipped", reason: "deterministic_arithmetic" }]);
+    });
+
+    it("reports the skip before the tool lifecycle, and also when the calculator then fails", async () => {
+      const order: string[] = [];
+      const agent = new SingleAgent(new FakeModelProvider(), [new CalculatorTool()]);
+
+      await agent.run("12 * 8", (signal) => order.push(signal.type), (signal) => order.push(signal.type));
+      await expect(agent.run("5 / 0", (signal) => order.push(signal.type), (signal) => order.push(signal.type)))
+        .rejects.toMatchObject({ failureCode: "tool_failed" });
+
+      expect(order).toEqual([
+        "model.skipped", "tool.started", "tool.completed",
+        "model.skipped", "tool.started", "tool.failed",
+      ]);
+    });
+
+    it("does not report a skip when no calculator is registered and the model answers an arithmetic-looking task", async () => {
+      const { signals, onModelCall } = collect();
+      const agent = new SingleAgent(new FakeModelProvider([{ type: "text", text: "96" }]));
+
+      await agent.run("12 * 8", undefined, onModelCall);
+
+      expect(signals.map((signal) => signal.type)).toEqual(["model.requested", "model.responded"]);
     });
 
     it("does not let a failing signal callback masquerade as a provider failure", async () => {

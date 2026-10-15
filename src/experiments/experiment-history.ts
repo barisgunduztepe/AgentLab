@@ -376,6 +376,10 @@ function isValidEvent(value: unknown, strictKeys: boolean): value is ExperimentE
       return hasKeys(value.agentId === undefined ? ["purpose"] : ["purpose", "agentId"]) &&
         (value.purpose === "initial" || value.purpose === "after_tool") &&
         (value.agentId === undefined || value.agentId === "analyst" || value.agentId === "finalizer");
+    case "model.skipped":
+      return hasKeys(value.agentId === undefined ? ["reason"] : ["reason", "agentId"]) &&
+        value.reason === "deterministic_arithmetic" &&
+        (value.agentId === undefined || value.agentId === "analyst" || value.agentId === "finalizer");
     case "model.responded":
       return hasKeys(value.agentId === undefined ? ["outcome", "durationMs"] : ["outcome", "durationMs", "agentId"]) &&
         (value.outcome === "text" || value.outcome === "tool_call" || value.outcome === "error") &&
@@ -432,6 +436,8 @@ function sanitizeEvent(event: ExperimentEvent, strictKeys: boolean): ExperimentE
       return { ...base, type: event.type, toolName: event.toolName, ...(event.agentId ? { agentId: event.agentId } : {}) };
     case "model.requested":
       return { ...base, type: event.type, purpose: event.purpose, ...(event.agentId ? { agentId: event.agentId } : {}) };
+    case "model.skipped":
+      return { ...base, type: event.type, reason: event.reason, ...(event.agentId ? { agentId: event.agentId } : {}) };
     case "model.responded":
       return {
         ...base,
