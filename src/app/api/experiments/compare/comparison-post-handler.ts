@@ -25,6 +25,7 @@ interface ComparisonRunResult {
   configurationId: "baseline" | "structured";
   id: string;
   status: "completed" | "failed";
+  durationMs?: number;
   output?: { type: "text"; text: string };
   errorMessage?: string;
   evaluation?: EvaluationResult;
@@ -111,6 +112,7 @@ function toComparisonRunResult(
     configurationId,
     id: experiment.id,
     status: experiment.status === "running" ? "failed" : experiment.status,
+    ...(experiment.durationMs === undefined ? {} : { durationMs: experiment.durationMs }),
     ...(experiment.status === "completed" && experiment.output ? { output: experiment.output } : {}),
     ...(experiment.status === "failed" && experiment.errorMessage ? { errorMessage: experiment.errorMessage } : {}),
     ...(evaluation === undefined ? {} : { evaluation }),

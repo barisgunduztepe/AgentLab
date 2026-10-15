@@ -4,7 +4,7 @@ Bu belge, AgentLab'in mevcut repository durumunu ve onaylanmış geliştirme sı
 
 ## Mevcut checkpoint
 
-- v0.1–v0.6 tamamlandı; v0.7 çalışmaları sürüyor. v0.7.1 tamamlandı ve sıradaki milestone **v0.7.2 Temel karşılaştırma metrikleri**'dir.
+- v0.1–v0.6 tamamlandı; v0.7 çalışmaları sürüyor. v0.7.1 ve v0.7.2 tamamlandı; sıradaki aşama **v0.8 Automation**'dır.
 - v0.3 gerçek provider'larının canlı davranış doğrulaması sınırlıdır; Gemini tool-enabled isteklerinde daha önce 503 gözlenmiştir. v0.6 history çalışması provider davranışını değiştirmemiştir.
 
 ## v0.1 — Single Agent Foundation
@@ -178,13 +178,17 @@ History okuması local-only'dir: normal `dev`/`start` komutları `127.0.0.1` üz
 
 **Uygulama:** Dört sabit ve değerlendirilebilir single-agent senaryosu için aynı scenario task, provider/model, calculator tool ve evaluator kullanılarak `baseline` ve `structured` yapılandırmaları sıralı çalıştırılır. Baseline mevcut prompt'u aynen kullanır; structured yalnızca şu instruction'ı task prompt'una ekler: “Organize your response into the labeled sections ‘Key points’ and ‘Conclusion.’ Keep it concise and complete the original task.” Her koşu ayrı experiment ID ve sonuç taşır; ortak `comparisonId` ile ilişkilendirilir ve `configurationId` olarak `baseline` veya `structured` saklanır. Yeni kayıtlar history schema v2 kullanır; v1 kayıtlar değiştirilmeden okunmaya devam eder. UI karşılaştırmayı başlatır ve iki kayıtlı koşuyu tanımlar; kazanan veya metrik sıralaması üretmez.
 
-**Durum:** Tamamlandı. v0.7.2 temel başarı/duration metriklerini sonraki milestone olarak ekleyecektir.
+**Durum:** Tamamlandı. Temel başarı/duration metrikleri v0.7.2'de eklendi.
 
-### ⬜ v0.7.2 Temel karşılaştırma metrikleri
+### ✅ v0.7.2 Temel karşılaştırma metrikleri
 
 **Amaç:** Önce güvenilir başarı durumu ve duration ölçülerini yan yana göstermek. Maliyet ancak provider güvenilir usage verisi sağlıyorsa eklenir.
 
-Karmaşık dashboard veya grafikler bu milestone'un parçası değildir.
+**Uygulama:** Karşılaştırma yanıtına her koşunun `durationMs` değeri eklendi (history'ye yazılan değerle aynı; history şeması değişmedi). UI, `baseline` ve `structured` koşularını status, scenario evaluation (PASS/FAIL), duration ve history bağlantısıyla yan yana tabloda gösterir. Eksik değerler "Not evaluated" / "Not measured" olarak yazılır. Kazanan veya sıralama üretilmez; tek koşu olduğu ve süre ağ/provider gecikmesinden etkilendiği için sonuç istatistiksel değildir.
+
+**Kapsam dışı bırakılanlar:** Maliyet ölçümü eklenmedi, çünkü `ModelProvider` arayüzü token/usage verisi sağlamıyor; güvenilir usage verisi gelirse ayrı bir milestone'da değerlendirilir. Dashboard, grafik, tekrarlı koşu/ortalama ve eski v1 kayıtlardan geriye dönük karşılaştırma yapılmadı.
+
+**Durum:** Tamamlandı. 158 test, lint, tsc ve production build başarılı; tablo fake provider ile tarayıcıda iki senaryoda görülerek doğrulandı. Gerçek API çağrısı yapılmadı.
 
 ## v0.8 — Automation
 

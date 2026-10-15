@@ -81,6 +81,12 @@ describe("POST /api/experiments/compare", () => {
     });
     expect(body.runs[0].id).not.toBe(body.runs[1].id);
     expect(saved).toHaveLength(2);
+    expect(body.runs.map((run: { durationMs: number }) => run.durationMs))
+      .toEqual(saved.map(({ durationMs }) => durationMs));
+    for (const run of body.runs as { durationMs: number }[]) {
+      expect(Number.isInteger(run.durationMs)).toBe(true);
+      expect(run.durationMs).toBeGreaterThanOrEqual(0);
+    }
     expect(saved.map(({ comparisonId, configurationId, scenarioId, task, schemaVersion }) => ({
       comparisonId, configurationId, scenarioId, task, schemaVersion,
     }))).toEqual([

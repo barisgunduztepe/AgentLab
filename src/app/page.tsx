@@ -9,7 +9,14 @@ type UiStatus = ExperimentStatus | "idle";
 type ComparisonResult = {
   comparisonId: string;
   scenarioId: string;
-  runs: { configurationId: "baseline" | "structured"; id: string; historySaved: boolean }[];
+  runs: {
+    configurationId: "baseline" | "structured";
+    id: string;
+    status: "completed" | "failed";
+    durationMs?: number;
+    evaluation?: EvaluationResult;
+    historySaved: boolean;
+  }[];
 };
 
 function statusLabel(status: UiStatus): string {
@@ -399,19 +406,42 @@ export default function Home() {
             {comparisonResult && (
               <div aria-live="polite" style={{ marginTop: 10 }}>
                 <p>Comparison {comparisonResult.comparisonId}</p>
-                <ul>
-                  {comparisonResult.runs.map((run) => (
-                    <li key={run.id}>
-                      {run.configurationId} — experiment {run.id} {run.historySaved ? "(saved)" : "(history not saved)"}{" "}
-                      {run.historySaved && <button type="button" onClick={() => {
-                        setSelectedHistoryId(run.id);
-                        setHistoricalExperiment(null);
-                        setHistoricalError(null);
-                        setHistoricalLoading(true);
-                      }}>Open history detail</button>}
-                    </li>
-                  ))}
-                </ul>
+                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+                  <thead>
+                    <tr>
+                      {["Configuration", "Status", "Evaluation", "Duration", "History"].map((heading) => (
+                        <th key={heading} style={{ padding: "6px 8px", borderBottom: "1px solid #d7dce5" }}>{heading}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {comparisonResult.runs.map((run) => (
+                      <tr key={run.id}>
+                        <td style={{ padding: "6px 8px", borderBottom: "1px solid #eef0f4" }}>{run.configurationId}</td>
+                        <td style={{ padding: "6px 8px", borderBottom: "1px solid #eef0f4" }}>{statusLabel(run.status)}</td>
+                        <td style={{ padding: "6px 8px", borderBottom: "1px solid #eef0f4" }}>
+                          {run.evaluation ? (run.evaluation.passed ? "PASS" : "FAIL") : "Not evaluated"}
+                        </td>
+                        <td style={{ padding: "6px 8px", borderBottom: "1px solid #eef0f4" }}>
+                          {run.durationMs === undefined ? "Not measured" : `${run.durationMs} ms`}
+                        </td>
+                        <td style={{ padding: "6px 8px", borderBottom: "1px solid #eef0f4" }}>
+                          {run.historySaved ? (
+                            <button type="button" onClick={() => {
+                              setSelectedHistoryId(run.id);
+                              setHistoricalExperiment(null);
+                              setHistoricalError(null);
+                              setHistoricalLoading(true);
+                            }}>Open history detail</button>
+                          ) : "Not saved"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p style={{ margin: "6px 0 0", color: "#536078" }}>
+                  Single run per configuration; duration depends on network and provider latency, so this is not a statistical result. Cost is not measured.
+                </p>
               </div>
             )}
           </div>

@@ -55,13 +55,19 @@ Bunlar sonraki sürümlerde değerlendirilecek.
 
 Proje küçük, test edilebilir ve geri alınabilir milestone'larla geliştirilecek. Her adımda önce kavram öğrenilecek; ardından küçük implementasyon, test, canlı doğrulama ve Git checkpoint'i gelecek.
 
-**Mevcut durum:** v0.5.1 Controlled Two-Agent Handoff, v0.5.2 Multi-Agent Lifecycle Observability, v0.6 Local Experiment History ve v0.7.1 aynı senaryoda kontrollü agent comparison runs tamamlandı. v0.7 çalışmaları sürüyor; sıradaki milestone v0.7.2 temel karşılaştırma metrikleridir. Gemini tool-enabled canlı davranışı doğrulanmamıştır; API/provider incelemesi ertelenmiştir.
+**Mevcut durum:** v0.5.1 Controlled Two-Agent Handoff, v0.5.2 Multi-Agent Lifecycle Observability, v0.6 Local Experiment History, v0.7.1 aynı senaryoda kontrollü agent comparison runs ve v0.7.2 temel karşılaştırma metrikleri tamamlandı. Sıradaki aşama v0.8 Automation'dır. Gemini tool-enabled canlı davranışı doğrulanmamıştır; API/provider incelemesi ertelenmiştir.
 
 ## v0.7.1 — Same-scenario agent configuration runs
 
 The comparison action runs `baseline` first and `structured` second for the selected fixed, evaluated single-agent scenario. Both runs use the same task, provider/model configuration, calculator tool definition, and evaluator, but use separate provider instances and Experiment IDs. Baseline keeps the existing prompt unchanged. Structured adds only: “Organize your response into the labeled sections ‘Key points’ and ‘Conclusion.’ Keep it concise and complete the original task.”
 
-Each saved run has a shared `comparisonId` and its own `configurationId`. New records use history schema v2; existing v1 history records remain readable and are not rewritten as v2. The interface identifies both saved runs and links to their existing history details. It does not select a winner or compare metrics; basic success and duration metrics are v0.7.2 work. Only the four fixed evaluated single-agent scenarios are eligible; the handoff and custom-task flows are unchanged.
+Each saved run has a shared `comparisonId` and its own `configurationId`. New records use history schema v2; existing v1 history records remain readable and are not rewritten as v2. The interface identifies both saved runs and links to their existing history details. It does not select a winner. Only the four fixed evaluated single-agent scenarios are eligible; the handoff and custom-task flows are unchanged.
+
+## v0.7.2 — Basic comparison metrics
+
+After a comparison run, the interface shows `baseline` and `structured` side by side in a table: status, scenario evaluation (PASS/FAIL), duration in milliseconds, and a link to the saved history detail. The comparison response now includes each run's `durationMs`, the same value that is saved in history; the history schema is unchanged. A run is shown as "Not evaluated" or "Not measured" when that value is missing.
+
+This is a single run per configuration, and duration depends on network and provider latency, so it is not a statistical result. No winner or ranking is produced. Cost is intentionally not measured: the `ModelProvider` interface exposes no token or usage data, and cost is only to be added when a provider supplies reliable usage data. There are no charts or dashboards.
 
 ## v0.3.3 — OpenAI Responses API
 
