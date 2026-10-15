@@ -72,7 +72,7 @@ describe("createModelProvider", () => {
       process.env.AGENTLAB_MODEL_PROVIDER = value;
     }
 
-    expect(createModelProvider).toThrow("AGENTLAB_MODEL_PROVIDER must be set to 'fake', 'openai', or 'gemini'.");
+    expect(createModelProvider).toThrow("AGENTLAB_MODEL_PROVIDER must be set to 'fake', 'openai', 'gemini', or 'openai-compatible'.");
   });
 
   it("requires server-side OpenAI credentials and model configuration", () => {

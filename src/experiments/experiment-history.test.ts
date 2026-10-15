@@ -245,9 +245,9 @@ describe("ExperimentHistoryStore", () => {
       }))).toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
     });
 
-    it("accepts real providers with a model and an optional short commit", async () => {
+    it.each(["openai", "gemini", "openai-compatible"] as const)("accepts %s with a model and an optional short commit", async (provider) => {
       const run = {
-        provider: "openai" as const,
+        provider,
         model: "example-model",
         architecture: "handoff" as const,
         agentConfigurationId: "handoff-default" as const,

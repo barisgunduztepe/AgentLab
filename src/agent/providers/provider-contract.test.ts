@@ -1,3 +1,4 @@
+import { OpenAICompatibleModelProvider } from "./openai-compatible-model-provider";
 import OpenAI from "openai";
 import { GoogleGenAI } from "@google/genai";
 import { describe, expect, it } from "vitest";
@@ -8,7 +9,7 @@ import { RetryingModelProvider } from "./retrying-model-provider";
 import type { CompleteRequest, ModelMessage, ModelProvider } from "../model-provider";
 import { CalculatorTool } from "../../tools/calculator-tool";
 
-const kinds = ["fake", "openai", "gemini"] as const;
+const kinds = ["fake", "openai", "gemini", "openai-compatible"] as const;
 type Kind = (typeof kinds)[number];
 const text: FakeResponse = { type: "text", text: "Done." };
 const call = { callId: "one", toolName: "lookup", arguments: { query: "subject" } };
@@ -22,6 +23,15 @@ const next = (): CompleteRequest => ({ ...initial(), messages: [...initial().mes
 
 function rawResponse(kind: Kind, response: FakeResponse): object {
   const usage = response.usage;
+  if (kind === "openai-compatible") return {
+    id: "completion", object: "chat.completion", created: 0, model: "test-model",
+    choices: [{ index: 0, finish_reason: response.type === "tool_call" ? "tool_calls" : "stop", message: {
+      role: "assistant", content: response.type === "text" ? response.text : response.text ?? null,
+      ...(response.type === "tool_call" ? { tool_calls: [{ id: response.call.callId, type: "function",
+        function: { name: response.call.toolName, arguments: JSON.stringify(response.call.arguments) } }] } : {}),
+    } }],
+    ...(usage ? { usage: { prompt_tokens: usage.inputTokens ?? undefined, completion_tokens: usage.outputTokens ?? undefined, total_tokens: usage.totalTokens ?? undefined } } : {}),
+  };
   if (kind === "openai") return {
     object: "response", id: "response", status: "completed",
     output: response.type === "tool_call" ? [
@@ -55,12 +65,16 @@ function harness(kind: Kind, responses: FakeResponse[], wrapped: boolean, transf
     });
     const body = await request.json() as Record<string, unknown>;
     bodies.push(body);
-    const input = body.input as { type?: string }[];
-    const turn = input.filter((item) => ["function_call_output", "function_result"].includes(item.type ?? "")).length;
+    const turn = kind === "openai-compatible"
+      ? (body.messages as { role: string }[]).filter((m) => m.role === "tool").length
+      : (body.input as { type?: string }[]).filter((item) => ["function_call_output", "function_result"].includes(item.type ?? "")).length;
     return Response.json(transform(rawResponse(kind, responses[turn] ?? text)));
   };
   const config = { apiKey: "test-only-key", model: "test-model" };
-  let provider: ModelProvider = kind === "fake" ? new FakeModelProvider(responses) : kind === "openai"
+  let provider: ModelProvider = kind === "openai-compatible"
+    ? new OpenAICompatibleModelProvider({ ...config, baseURL: "http://localhost:11434/v1" },
+        new OpenAI({ apiKey: config.apiKey, baseURL: "http://localhost:11434/v1", maxRetries: 0, fetch: fetcher }))
+    : kind === "fake" ? new FakeModelProvider(responses) : kind === "openai"
     ? new OpenAIModelProvider(config, new OpenAI({ ...config, maxRetries: 0, fetch: fetcher }))
     : new GeminiModelProvider(config, new GoogleGenAI({ apiKey: config.apiKey, httpOptions: { fetch: fetcher } }));
   if (wrapped) provider = new RetryingModelProvider(provider, { sleep: async () => {}, random: () => 0 });
@@ -82,12 +96,17 @@ for (const kind of kinds) for (const wrapped of [false, true]) describe(`${kind}
       expect(bodies).toHaveLength(2);
       for (const body of bodies) {
         expect(body).not.toHaveProperty("previous_response_id"); expect(body).not.toHaveProperty("previous_interaction_id");
-        expect(body.store).toBe(false);
-        expect(body.tools).toEqual(expect.arrayContaining([expect.objectContaining({ name: "lookup", parameters: tool.parameters })]));
+        if (kind === "openai-compatible") expect(body).not.toHaveProperty("store");
+        else expect(body.store).toBe(false);
+        expect(body.tools).toEqual(expect.arrayContaining([expect.objectContaining(kind === "openai-compatible"
+          ? { function: expect.objectContaining({ name: "lookup", parameters: tool.parameters }) }
+          : { name: "lookup", parameters: tool.parameters })]));
       }
-      const input = bodies[1].input as object[];
-      expect(input).toEqual(expect.arrayContaining([expect.objectContaining({ type: "function_call", name: "lookup" })]));
-      expect(JSON.stringify(input)).toContain(kind === "openai" ? "System" : "Task");
+      const input = (kind === "openai-compatible" ? bodies[1].messages : bodies[1].input) as object[];
+      expect(input).toEqual(expect.arrayContaining([expect.objectContaining(kind === "openai-compatible"
+        ? { role: "assistant", tool_calls: [expect.objectContaining({ function: expect.objectContaining({ name: "lookup" }) })] }
+        : { type: "function_call", name: "lookup" })]));
+      expect(JSON.stringify(input)).toContain(kind === "gemini" ? "Task" : "System");
       expect(JSON.stringify(input)).toContain("Looking up."); expect(JSON.stringify(input)).toContain("Found");
       if (kind === "gemini") expect(bodies[1].system_instruction).toBe("System");
     }

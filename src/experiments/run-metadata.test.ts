@@ -58,7 +58,7 @@ describe("createRunMetadata", () => {
     delete process.env.AGENTLAB_MODEL_PROVIDER;
 
     expect(() => createRunMetadata({ architecture: "single", agentConfigurationId: "baseline" }))
-      .toThrow("AGENTLAB_MODEL_PROVIDER must be set to 'fake', 'openai', or 'gemini'.");
+      .toThrow("AGENTLAB_MODEL_PROVIDER must be set to 'fake', 'openai', 'gemini', or 'openai-compatible'.");
   });
 
   it("gives every configuration a positive integer version", () => {

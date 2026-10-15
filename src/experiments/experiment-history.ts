@@ -8,7 +8,7 @@ import { copyModelUsage, isModelUsage } from "../agent/model-contract";
 import type { EvaluationResult, ExperimentEvent } from "./types";
 
 export type HistorySchemaVersion = 1 | 2 | 3;
-export type ExperimentRunProvider = "fake" | "openai" | "gemini";
+export type ExperimentRunProvider = "fake" | "openai" | "gemini" | "openai-compatible";
 export type ExperimentArchitecture = "single" | "handoff";
 export type RunAgentConfigurationId = "baseline" | "structured" | "handoff-default";
 
@@ -252,7 +252,7 @@ function sanitizeRun(run: ExperimentRunMetadata): ExperimentRunMetadata {
   };
 }
 
-const RUN_PROVIDERS: readonly string[] = ["fake", "openai", "gemini"];
+const RUN_PROVIDERS: readonly string[] = ["fake", "openai", "gemini", "openai-compatible"];
 const RUN_CONFIGURATIONS_BY_ARCHITECTURE: Record<ExperimentArchitecture, readonly string[]> = {
   single: ["baseline", "structured"],
   handoff: ["handoff-default"],

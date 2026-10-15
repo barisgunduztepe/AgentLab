@@ -2,6 +2,7 @@ import type { FakeResponse } from "./providers/fake-model-provider";
 import { FakeModelProvider } from "./providers/fake-model-provider";
 import { GeminiModelProvider } from "./providers/gemini-model-provider";
 import { OpenAIModelProvider } from "./providers/openai-model-provider";
+import { OpenAICompatibleModelProvider, getOpenAICompatibleConfiguration, type OpenAICompatibleConfiguration } from "./providers/openai-compatible-model-provider";
 import { RetryingModelProvider } from "./providers/retrying-model-provider";
 import type { ModelProvider } from "./model-provider";
 
@@ -21,7 +22,7 @@ export function createComparisonModelProviders(fixtures?: {
 }
 
 /** Provider kind and model name for history records. Never includes keys or other credentials. */
-export function describeConfiguredProvider(): { provider: "fake" | "openai" | "gemini"; model?: string } {
+export function describeConfiguredProvider(): { provider: "fake" | "openai" | "gemini" | "openai-compatible"; model?: string } {
   const configuration = resolveConfiguration();
   return configuration.provider === "fake"
     ? { provider: "fake" }
@@ -30,10 +31,13 @@ export function describeConfiguredProvider(): { provider: "fake" | "openai" | "g
 
 type ProviderConfiguration =
   | { provider: "fake" }
-  | { provider: "openai" | "gemini"; apiKey: string; model: string };
+  | { provider: "openai" | "gemini"; apiKey: string; model: string }
+  | ({ provider: "openai-compatible" } & OpenAICompatibleConfiguration);
 
 function resolveConfiguration(): ProviderConfiguration {
   switch (process.env.AGENTLAB_MODEL_PROVIDER) {
+    case "openai-compatible":
+      return { provider: "openai-compatible", ...getOpenAICompatibleConfiguration() };
     case "fake":
       return { provider: "fake" };
     case "openai": {
@@ -51,7 +55,7 @@ function resolveConfiguration(): ProviderConfiguration {
       return { provider: "gemini", apiKey, model: model.trim() };
     }
     default:
-      throw new Error("AGENTLAB_MODEL_PROVIDER must be set to 'fake', 'openai', or 'gemini'.");
+      throw new Error("AGENTLAB_MODEL_PROVIDER must be set to 'fake', 'openai', 'gemini', or 'openai-compatible'.");
   }
 }
 
@@ -60,6 +64,8 @@ function createFromConfiguration(
   fakeResponses?: readonly FakeResponse[],
 ): ModelProvider {
   switch (configuration.provider) {
+    case "openai-compatible":
+      return new RetryingModelProvider(new OpenAICompatibleModelProvider(configuration));
     case "fake":
       return new FakeModelProvider(fakeResponses);
     case "openai":
