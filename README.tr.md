@@ -55,7 +55,7 @@ Bunlar sonraki sürümlerde değerlendirilecek.
 
 Proje küçük, test edilebilir ve geri alınabilir milestone'larla geliştirilecek. Her adımda önce kavram öğrenilecek; ardından küçük implementasyon, test, canlı doğrulama ve Git checkpoint'i gelecek.
 
-**Mevcut durum:** v0.5.1 Controlled Two-Agent Handoff, v0.5.2 Multi-Agent Lifecycle Observability, v0.6 Local Experiment History, v0.7.1 aynı senaryoda kontrollü agent comparison runs ve v0.7.2 temel karşılaştırma metrikleri tamamlandı. Sıradaki aşama v0.8 Automation'dır. Gemini tool-enabled canlı davranışı doğrulanmamıştır; API/provider incelemesi ertelenmiştir.
+**Mevcut durum:** v0.5.1 Controlled Two-Agent Handoff, v0.5.2 Multi-Agent Lifecycle Observability, v0.6 Local Experiment History, v0.7.1 aynı senaryoda kontrollü agent comparison runs ve v0.7.2 temel karşılaştırma metrikleri tamamlandı. Sıradaki aşama v0.8.0 Toparlama ve v0.8 Ölçülebilir çekirdek'tir (ayrıntı ROADMAP.md'de). Gemini tool-enabled canlı davranışı doğrulanmamıştır; API/provider incelemesi ertelenmiştir.
 
 ## v0.7.1 — Same-scenario agent configuration runs
 

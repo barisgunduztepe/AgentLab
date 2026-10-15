@@ -4,7 +4,7 @@ Bu belge, AgentLab'in mevcut repository durumunu ve onaylanmış geliştirme sı
 
 ## Mevcut checkpoint
 
-- v0.1–v0.6 tamamlandı; v0.7 çalışmaları sürüyor. v0.7.1 ve v0.7.2 tamamlandı; sıradaki aşama **v0.8 Automation**'dır.
+- v0.1–v0.7 tamamlandı. Sıradaki aşama **v0.8.0 Toparlama**, ardından **v0.8 Ölçülebilir çekirdek**'tir. Eski "v0.8 Automation" planı 2026-10-15 mimari incelemesiyle yeniden çerçevelendi; kontrollü tekrar artık v0.9.4'tedir (aşağıdaki "Yol haritası revizyonu" bölümüne bakın).
 - v0.3 gerçek provider'larının canlı davranış doğrulaması sınırlıdır; Gemini tool-enabled isteklerinde daha önce 503 gözlenmiştir. v0.6 history çalışması provider davranışını değiştirmemiştir.
 
 ## v0.1 — Single Agent Foundation
@@ -190,17 +190,79 @@ History okuması local-only'dir: normal `dev`/`start` komutları `127.0.0.1` üz
 
 **Durum:** Tamamlandı. 158 test, lint, tsc ve production build başarılı; tablo fake provider ile tarayıcıda iki senaryoda görülerek doğrulandı. Gerçek API çağrısı yapılmadı.
 
-## v0.8 — Automation
+## Yol haritası revizyonu (2026-10-15)
 
-### ⬜ v0.8.1 Kontrollü otomatik experiment çalıştırma
+v0.7 sonunda yapılan mimari inceleme, laboratuvarın karşılaştırma için gereken bilgiyi henüz kaydedemediğini gösterdi. Bu nedenle yeni provider, araç veya mimari eklemeden önce ölçüm çekirdeği kurulur. Eski "v0.8 Automation / v0.8.1 Kontrollü otomatik experiment çalıştırma" hedefi kaldırılmadı; v0.9.4 kontrollü tekrar olarak yeniden çerçevelendi, çünkü durdurma davranışı önce v0.8.3'teki iptal altyapısını gerektirir.
 
-**Amaç:** Sınırlandırılmış tekrar/trigger akışı sağlamak. Çalıştırmalar ayrı kaydedilmeli ve açık durdurma davranışı olmalıdır.
+**İncelemenin bulguları:**
+
+1. **Konuşma durumu provider'da tutuluyor.** OpenAI/Gemini adaptörleri `previousResponseId` / `previousInteractionId` saklıyor; `ModelProvider` yalnızca `generateResponse` + `continueAfterToolCall` sunuyor. Agent modele ne gönderildiğini bilemiyor; context/talimat/hafıza deneyleri yapılamıyor; her koşu ayrı provider instance'ı gerektiriyor; durumsuz (chat-completions tarzı) yerel modeller bu arayüze ancak durum taklidiyle uyar.
+2. **History hangi provider/model ile koşulduğunu kaydetmiyor.** Kayıtlarda provider, model, agent yapılandırma sürümü veya fake bayrağı yok; fake ve gerçek koşular ayırt edilemez, "aynı model" iddiası kanıtlanamaz.
+3. **Model çağrıları gözlenmiyor.** Olaylar yalnız araç ve yaşam döngüsünü kapsar; model çağrı sayısı, süresi, bitiş nedeni ve usage kaydedilmez.
+4. **Hata nedeni siliniyor.** `runExperiment` her hatayı genel mesaja çevirir; evaluator unknown-tool nedenini kanıtlayamaz (v0.4.2 sınırlaması).
+5. **İptal altyapısı yok.** Arayüzde `AbortSignal` yok; SSE istemcisi ayrılsa da deney sürer.
+6. **Araç şeması provider'lara gömülü ve calculator'a özel.** `getCalculatorFunctionTools` iki provider'da kopyalanmış; `Tool.execute(input: string)` şemasız; Gemini adaptörü calculator dışını kendi içinde reddeder.
+7. **Daha küçükler:** aritmetik görevler modele gitmeden hesaplanır ve bunu belirten olay yoktur; SSE ve karşılaştırma handler'ları orkestrasyonu iki kez yazar (karşılaştırma canlı akış vermez); bir senaryo eklemek beş yere dokunmayı gerektirir (katalog, evaluator, fixture, handler listesi, `page.tsx` listesi); fake seçimi handler içinde ortam değişkeniyle yapılır; 🟡 canlı doğrulanmamış maddeler birikir.
+
+Sıralama gerekçesi: ölçüm ve arayüz düzeltilmeden eklenen her provider/araç/mimari, calculator'a özel ve durum saklayan kodu çoğaltır. Bu sıra hem en ucuz yoldur hem de öğrenme hedefindeki Context/Harness konusunu doğrudan çalıştırır.
+
+## v0.8.0 — Toparlama
+
+### ⬜ v0.8.0 Repository ve süreç toparlaması
+
+- v0.7.2 commit'inin push edilmesi.
+- GitHub Actions CI: test, lint, tsc ve production build.
+- Kullanılmayan `groq-model-provider.ts` dosyasının kaldırılması.
+- Yerel history'deki fake deneme kayıtlarının temizlenmesi.
+- "Bitti" kuralı (aşağıdaki Development Principles'a eklendi): canlı doğrulama yapılmadan milestone ✅ olmaz; yapılamıyorsa açıkça "yalnız fake ile doğrulandı" diye işaretlenir.
+- ROADMAP'in gelecek planı (ROADMAP) ve tamamlanan işler (CHANGELOG) olarak ayrılması.
+- AGENTS.md'nin agent'tan bağımsız dile getirilmesi (Codex'e özgü ifadeler; artık Claude da çalışıyor).
+
+## v0.8 — Ölçülebilir çekirdek
+
+### ⬜ v0.8.1 Koşu metadata'sı (history schema v3)
+
+**Amaç:** Her kaydın nasıl üretildiğini kanıtlamak. Provider, model, agent yapılandırma kimliği ve sürümü, senaryo, uygulama commit'i ve fake bayrağı kaydedilir; v1/v2 kayıtlar değiştirilmeden okunur. UI fake koşuları açıkça "FAKE" olarak etiketler. En küçük ve en değerli adım.
+
+### ⬜ v0.8.2 Model çağrı olayları ve hata kodları
+
+**Amaç:** Model davranışını gözlemlenebilir kılmak. `model.requested` / `model.responded` olayları süre, bitiş nedeni ve (varsa) usage taşır; prompt/yanıt içeriği varsayılan olarak olaylara yazılmaz. `experiment.failed` güvenli bir `failureCode` alır (örn. `tool_unavailable`, `tool_limit`, `invalid_tool_call`, `tool_failed`, `provider_error`); evaluator nedeni bu kodla doğrular. Deterministik aritmetik yolu ayrı bir olayla görünür olur.
+
+### ⬜ v0.8.3 Durumsuz model arayüzü
+
+**Amaç:** Konuşmayı agent'ın sahiplenmesi. `complete({ messages, tools, signal })` biçiminde durumsuz bir sözleşme; mesaj geçmişi agent'ta tutulur. Araçlar JSON şemasıyla tanımlanır ve provider'lar şemayı genel olarak çevirir (calculator'a özel kopyalar kalkar). `AbortSignal` uçtan uca taşınır; SSE istemcisi ayrılınca deney durur. Tüm provider'lar için ortak sözleşme testi eklenir. Transcript'in kalıcı kaydı varsayılan olarak kapalıdır (mevcut veri ilkesi). Kapsam büyürse v0.8.3a (arayüz + agent) ve v0.8.3b (araç şeması + iptal) olarak bölünür.
+
+### ⬜ v0.8.4 İlk gerçek provider ve canlı doğrulama
+
+**Amaç:** Gerçek sinyal almak. Ücretsiz/açık kaynak öncelikli olarak OpenAI uyumlu yerel bir uç nokta (örn. Ollama) için adaptör; elle çalıştırılan smoke betiği (otomatik testlere girmez); kaydedilmiş gerçek yanıtların testlerde tekrar oynatılması; canlı doğrulama raporu. Smoke testi laptopta küçük bir modelle, gerçek karşılaştırmalar GPU'lu masaüstünde yapılabilir; model indirmesi büyük olduğundan Wi-Fi'da yapılmalıdır.
+
+## v0.9 — Gerçek karşılaştırma
+
+### ⬜ v0.9.1 Tek koşu servisi ve mimari kaydı
+
+**Amaç:** Orkestrasyonu tek yerde toplamak. SSE ve karşılaştırma aynı koşu servisini kullanır (karşılaştırma da canlı akış verir). Agent mimarileri bir kayıttan (registry) seçilir; `"baseline" | "structured"` sabit birliği ve handoff'a özel `if`'ler kalkar. Senaryo tek tanımda toplanır: görev, evaluator, fake fixture ve karşılaştırılabilirlik bilgisi.
+
+### ⬜ v0.9.2 İkinci araç ve ayırt edici senaryolar
+
+**Amaç:** Mimarileri ayırabilen deneyler. Salt okunur ikinci araç (sabit belge setinde arama) ve mimariler arasında fark yaratması beklenen 2–3 daha zor senaryo (çok adımlı arama, kasıtlı çelişki içeren görev).
+
+### ⬜ v0.9.3 Üçüncü mimari ve çoklu karşılaştırma
+
+**Amaç:** Tek agent + Critic mimarisi; handoff karşılaştırmaya katılır; karşılaştırma ikiden fazla mimariyi destekler. Kazanan seçilmez.
+
+### ⬜ v0.9.4 Kontrollü tekrar
+
+**Amaç:** Gerçek modellerin değişkenliğini ölçmek. N tekrarlı koşu, bütçe/koşu üst sınırı, açık durdurma, başarı oranı, medyan süre ve yayılım. Her koşu ayrı kaydedilir. JSON history'nin yavaşladığı ölçülürse SQLite değerlendirilir. (Eski v0.8.1 hedefi.)
 
 ## v1.0 — Usable AgentLab
 
 ### ⬜ v1.0.1 Release / Productization Checkpoint
 
-**Amaç:** Desteklenen AgentLab akışlarını güvenilir, anlaşılır ve dokümante edilmiş hale getirmek.
+**Amaç:** Desteklenen AgentLab akışlarını güvenilir, anlaşılır ve dokümante edilmiş hale getirmek: UI'ın bileşenlere bölünmesi, JSON/CSV dışa aktarma, mimari diyagramı, demo GIF, katkı rehberi ve ilk sürüm etiketi.
+
+## Bilerek sonraya bırakılanlar
+
+LLM-as-judge (ancak deterministik değerlendirme yetmezse), bulut veritabanı, kullanıcı hesabı ve swarm. SQLite ve MCP araç desteği değerlendirme listesindedir.
 
 ## Development Principles
 
@@ -218,6 +280,7 @@ Ek ilkeler:
 - YAGNI uygula; premature abstraction yapma.
 - Her milestone mümkün olduğunca tek ana kavram öğretsin.
 - Milestone'lar küçük, test edilebilir ve geri alınabilir olsun.
+- Canlı doğrulama yapılmadan milestone ✅ olarak işaretlenmez; yapılamıyorsa "yalnız fake ile doğrulandı" diye açıkça belirtilir (2026-10-15).
 - Gizli chain-of-thought gözlemlenmeye veya saklanmaya çalışılmasın.
 - Tool input/output verileri varsayılan olarak event log'a yazılmasın.
 - Güvenlik gereksinimleri ilgili capability eklendiğinde ele alınsın.
