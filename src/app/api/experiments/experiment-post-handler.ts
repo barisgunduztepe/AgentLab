@@ -86,10 +86,21 @@ export function createExperimentPostHandler(historyStore: Pick<ExperimentHistory
 
     const encoder = new TextEncoder();
     let streamCancelled = false;
+    const runController = new AbortController();
+    const disconnect = () => { streamCancelled = true; runController.abort(); };
+    request.signal.addEventListener("abort", disconnect, { once: true });
+    if (request.signal.aborted) disconnect();
     const capturedEvents: ExperimentEvent[] = [];
 
     const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
+      start(controller) {
+        const sendEvent = (event: ExperimentEvent) => {
+          capturedEvents.push(event);
+          try { enqueueEvent(controller, encoder, event, streamCancelled); }
+          catch { disconnect(); }
+        };
+        // Do not return the run promise: reader cancellation must work while it is pending.
+        void (async () => {
         try {
           const agent = scenarioId === "analyst-finalizer-handoff"
             ? new TwoAgentHandoffRunner(
@@ -98,10 +109,7 @@ export function createExperimentPostHandler(historyStore: Pick<ExperimentHistory
               )
             : new SingleAgent(modelProviders[0], [new CalculatorTool()]);
 
-          const experiment = await runExperiment(task, agent, (event) => {
-            capturedEvents.push(event);
-            enqueueEvent(controller, encoder, event, streamCancelled);
-          });
+          const experiment = await runExperiment(task, agent, sendEvent, { signal: runController.signal });
 
           let evaluation: EvaluationResult | undefined;
           if (scenarioId) {
@@ -114,8 +122,7 @@ export function createExperimentPostHandler(historyStore: Pick<ExperimentHistory
                 scenarioId,
                 evaluation,
               };
-              capturedEvents.push(evaluationEvent);
-              enqueueEvent(controller, encoder, evaluationEvent, streamCancelled);
+              sendEvent(evaluationEvent);
             }
           }
 
@@ -125,15 +132,16 @@ export function createExperimentPostHandler(historyStore: Pick<ExperimentHistory
             // Execution succeeded or failed independently; keep storage details and user data private.
             console.error("AgentLab experiment history could not be saved.");
           }
+        } catch {
+          if (!streamCancelled) controller.error(new Error("Experiment stream failed."));
+          streamCancelled = true;
         } finally {
-          if (!streamCancelled) {
-            controller.close();
-          }
+          request.signal.removeEventListener("abort", disconnect);
+          if (!streamCancelled) controller.close();
         }
+        })();
       },
-      cancel() {
-        streamCancelled = true;
-      },
+      cancel() { disconnect(); },
     });
 
     return new Response(stream, {

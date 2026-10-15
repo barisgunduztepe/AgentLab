@@ -1,3 +1,4 @@
+import { throwIfCancelled } from "../agent/cancellation";
 import { randomUUID } from "node:crypto";
 import { failureCodeOf } from "../agent/agent-failure";
 import type { ToolLifecycleSignal } from "../agent/single-agent";
@@ -9,6 +10,7 @@ type ExperimentRunner = {
     task: string,
     onToolLifecycle?: (signal: ToolLifecycleSignal & { agentId?: AgentId }) => void,
     onLifecycle?: (signal: AgentSignal) => void,
+    options?: { signal?: AbortSignal },
   ): Promise<ExperimentOutput>;
 };
 
@@ -16,6 +18,7 @@ export async function runExperiment(
   task: string,
   agent: ExperimentRunner,
   onEvent: (event: ExperimentEvent) => void,
+  options: { signal?: AbortSignal } = {},
 ): Promise<Experiment> {
   const id = randomUUID();
   const startedAt = new Date().toISOString();
@@ -35,6 +38,7 @@ export async function runExperiment(
   let output: ExperimentOutput;
 
   try {
+    throwIfCancelled(options.signal);
     const response = await agent.run(
       task,
       (signal) => {
@@ -51,12 +55,14 @@ export async function runExperiment(
           ...signal,
         });
       },
+      options,
     );
+    throwIfCancelled(options.signal);
     output = response;
   } catch (error) {
     const endedAt = new Date().toISOString();
     const durationMs = Date.now() - startTimeMs;
-    const errorMessage = "Agent görevi tamamlayamadı.";
+    const errorMessage = options.signal?.aborted ? "Deney iptal edildi." : "Agent görevi tamamlayamadı.";
     const failureCode = failureCodeOf(error);
 
     const failedExperiment: Experiment = {

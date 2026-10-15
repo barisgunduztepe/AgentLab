@@ -1,3 +1,5 @@
+import * as providerFactory from "../../../agent/create-model-provider";
+import { abortableDelay } from "../../../agent/cancellation";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -409,5 +411,36 @@ describe("POST /api/experiments fixed scenarios", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Provide either task or scenarioId, not both.",
     });
+  });
+});
+
+describe("SSE cancellation", () => {
+  it.each(["reader", "request"] as const)("stops a pending model after %s cancellation and saves one failure", async (mode) => {
+    process.env.AGENTLAB_MODEL_PROVIDER = "fake";
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const complete = vi.fn(async (request: import("../../../agent/model-provider").CompleteRequest) => {
+      entered(); await abortableDelay(60_000, request.signal);
+      return { type: "text" as const, text: "late", finishReason: "stop" as const, usage: null };
+    });
+    const factory = vi.spyOn(providerFactory, "createModelProvider").mockReturnValue({ complete });
+    const controller = new AbortController();
+    const append = vi.spyOn(historyStore, "append");
+    try {
+      const response = await handlePost(new Request("http://localhost/api/experiments", {
+        method: "POST", body: JSON.stringify({ task: "Explain this" }), signal: controller.signal,
+      }));
+      const reader = response.body!.getReader();
+      await started;
+      if (mode === "reader") await reader.cancel(); else controller.abort("private disconnect");
+      await vi.waitFor(() => expect(append).toHaveBeenCalledOnce());
+      const saved = await historyStore.readAll();
+      expect(saved).toHaveLength(1); expect(saved[0].status).toBe("failed");
+      expect(saved[0].events.filter((e) => e.type === "experiment.failed")).toEqual([expect.objectContaining({ failureCode: "cancelled" })]);
+      expect(saved[0].events.filter((e) => e.type === "model.responded")).toEqual([expect.objectContaining({ outcome: "error" })]);
+      expect(saved[0].events.some((e) => e.type === "experiment.completed")).toBe(false);
+      expect(JSON.stringify(saved)).not.toContain("private disconnect"); expect(complete).toHaveBeenCalledOnce();
+      if (mode === "request") await reader.cancel();
+    } finally { factory.mockRestore(); }
   });
 });

@@ -94,9 +94,10 @@ export function createComparisonPostHandler(
     const tools = [new CalculatorTool()];
 
     for (const [index, configurationId] of configurations.entries()) {
+      if (request.signal.aborted) break;
       const events: ExperimentEvent[] = [];
       const agent = new SingleAgent(providers[index], tools, configurationId);
-      const experiment = await runExperiment(scenario.task, agent, (event) => events.push(event));
+      const experiment = await runExperiment(scenario.task, agent, (event) => events.push(event), { signal: request.signal });
       const evaluation = evaluateScenario(scenarioId, experiment, events);
       const run = describeRun(configurationId);
       let historySaved = false;

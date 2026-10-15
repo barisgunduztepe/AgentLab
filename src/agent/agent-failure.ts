@@ -9,6 +9,7 @@ export const FAILURE_CODES = [
   "tool_failed",
   "provider_error",
   "invalid_handoff",
+  "cancelled",
   "unknown",
 ] as const;
 
@@ -21,6 +22,7 @@ const DEFAULT_MESSAGES: Record<FailureCode, string> = {
   tool_failed: "Tool execution failed.",
   provider_error: "Model provider request failed.",
   invalid_handoff: "Agent handoff could not be completed.",
+  cancelled: "Agent run was cancelled.",
   unknown: "Agent run failed.",
 };
 

@@ -1,3 +1,4 @@
+import { throwIfCancelled } from "../cancellation";
 import type { ModelProvider, ModelResponse, CompleteRequest } from "../model-provider";
 import { validateRequest, validateResponse } from "../model-contract";
 
@@ -16,6 +17,7 @@ export class FakeModelProvider implements ModelProvider {
   }
 
   async complete(request: CompleteRequest): Promise<ModelResponse> {
+    throwIfCancelled(request.signal);
     validateRequest(request);
     let index = 0;
     for (const message of request.messages) {
@@ -34,6 +36,7 @@ export class FakeModelProvider implements ModelProvider {
       finishReason: "stop" as const, usage: null,
     };
     if (!response) throw new Error("FakeModelProvider response sequence is exhausted.");
+    throwIfCancelled(request.signal);
     validateResponse(response);
     return structuredClone(response);
   }

@@ -144,3 +144,27 @@ describe("POST /api/experiments/compare", () => {
     expect(rawBody).not.toContain("private filesystem path");
   });
 });
+
+describe("comparison cancellation", () => {
+  it("saves the started run as cancelled and does not start the second run", async () => {
+    const controller = new AbortController();
+    const first = vi.fn(async () => { controller.abort("private disconnect"); return { type: "text" as const, text: "late", finishReason: "stop" as const, usage: null }; });
+    const second = vi.fn(async () => ({ type: "text" as const, text: "unused", finishReason: "stop" as const, usage: null }));
+    const handler = createComparisonPostHandler(history, { createProviders: () => [{ complete: first }, { complete: second }] });
+    const response = await handler(new Request("http://localhost/api/experiments/compare", {
+      method: "POST", body: JSON.stringify({ scenarioId: "direct-text" }), signal: controller.signal,
+    }));
+    const body = await response.json(); const saved = await history.readAll();
+    expect(body.runs).toHaveLength(1); expect(saved).toHaveLength(1); expect(second).not.toHaveBeenCalled();
+    expect(saved[0].events).toContainEqual(expect.objectContaining({ type: "experiment.failed", failureCode: "cancelled" }));
+    expect(saved[0].evaluation?.passed).toBe(false);
+  });
+  it("does not fabricate a run when the request was aborted before execution", async () => {
+    const controller = new AbortController(); controller.abort();
+    const handler = createComparisonPostHandler(history);
+    const response = await handler(new Request("http://localhost/api/experiments/compare", {
+      method: "POST", body: JSON.stringify({ scenarioId: "direct-text" }), signal: controller.signal,
+    }));
+    expect((await response.json()).runs).toEqual([]); expect(await history.readAll()).toEqual([]);
+  });
+});

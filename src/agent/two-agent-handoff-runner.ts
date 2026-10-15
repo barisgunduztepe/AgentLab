@@ -1,3 +1,4 @@
+import { throwIfCancelled } from "./cancellation";
 import { AgentFailure, failureCodeOf } from "./agent-failure";
 import type { ExperimentOutput } from "../experiments/types";
 import type { ModelCallSignal, ToolLifecycleSignal } from "./single-agent";
@@ -37,7 +38,9 @@ export class TwoAgentHandoffRunner {
     task: string,
     onToolLifecycle?: (signal: ToolLifecycleSignal & { agentId?: AgentId }) => void,
     onLifecycle?: (signal: AgentSignal) => void,
+    options: { signal?: AbortSignal } = {},
   ): Promise<ExperimentOutput> {
+    throwIfCancelled(options.signal);
     if (task.trim().length === 0) {
       throw new AgentFailure("invalid_handoff", { message: HANDOFF_FAILURE_MESSAGE });
     }
@@ -50,6 +53,7 @@ export class TwoAgentHandoffRunner {
         buildAnalystAssignment(task),
         (signal) => onToolLifecycle?.({ ...signal, agentId: "analyst" }),
         (signal) => onLifecycle?.({ ...signal, agentId: "analyst" }),
+        options,
       );
     } catch (error) {
       onLifecycle?.({
@@ -69,6 +73,7 @@ export class TwoAgentHandoffRunner {
       output: analystResponse.text,
     });
 
+    throwIfCancelled(options.signal);
     const handoff = createHandoffPayload(task, analystResponse.text);
     if (!handoff) {
       onLifecycle?.({
@@ -85,6 +90,7 @@ export class TwoAgentHandoffRunner {
       fromAgentId: "analyst",
       toAgentId: "finalizer",
     });
+    throwIfCancelled(options.signal);
     onLifecycle?.({ type: "agent.lifecycle", agentId: "finalizer", phase: "started" });
 
     try {
@@ -92,7 +98,9 @@ export class TwoAgentHandoffRunner {
         buildFinalizerAssignment(handoff),
         (signal) => onToolLifecycle?.({ ...signal, agentId: "finalizer" }),
         (signal) => onLifecycle?.({ ...signal, agentId: "finalizer" }),
+        options,
       );
+      throwIfCancelled(options.signal);
       onLifecycle?.({
         type: "agent.lifecycle",
         agentId: "finalizer",

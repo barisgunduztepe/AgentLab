@@ -29,7 +29,7 @@ describe("RetryingModelProvider", () => {
 
     await expect(provider.complete({ messages: [{ role: "user", text: "task" }], tools: [] })).resolves.toEqual(textResponse);
     expect(complete).toHaveBeenCalledTimes(2);
-    expect(runtime.sleep).toHaveBeenCalledExactlyOnceWith(0);
+    expect(runtime.sleep).toHaveBeenCalledExactlyOnceWith(0, undefined);
   });
 
   it("stops after three total attempts", async () => {
@@ -62,7 +62,7 @@ describe("RetryingModelProvider", () => {
     const provider = new RetryingModelProvider(makeProvider({ complete }), runtime);
 
     await expect(provider.complete({ messages: [{ role: "user", text: "task" }], tools: [] })).resolves.toEqual(textResponse);
-    expect(runtime.sleep.mock.calls).toEqual([[250], [500]]);
+    expect(runtime.sleep.mock.calls).toEqual([[250, undefined], [500, undefined]]);
     expect(runtime.random).toHaveBeenCalledTimes(2);
   });
 
@@ -74,6 +74,6 @@ describe("RetryingModelProvider", () => {
     const provider = new RetryingModelProvider(makeProvider({ complete }), runtime);
 
     await expect(provider.complete({ messages: [{ role: "user", text: "task" }], tools: [] })).resolves.toEqual(textResponse);
-    expect(runtime.sleep).toHaveBeenCalledExactlyOnceWith(500);
+    expect(runtime.sleep).toHaveBeenCalledExactlyOnceWith(500, undefined);
   });
 });

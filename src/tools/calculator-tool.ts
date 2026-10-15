@@ -1,3 +1,4 @@
+import { throwIfCancelled } from "../agent/cancellation";
 import type { Tool, ToolDefinition } from "./tool";
 import type { JsonObject } from "../agent/model-completion";
 
@@ -24,8 +25,8 @@ export class CalculatorTool implements Tool {
       Object.keys(input).length === 1 && "expression" in input && typeof input.expression === "string";
   }
 
-  async execute(value: JsonObject, _options: { signal?: AbortSignal } = {}): Promise<string> {
-    void _options;
+  async execute(value: JsonObject, options: { signal?: AbortSignal } = {}): Promise<string> {
+    throwIfCancelled(options.signal);
     if (!this.validateInput(value)) throw new Error("Invalid calculator arguments.");
     const input = value.expression;
     if (typeof input !== "string" || input.trim().length === 0) {
@@ -33,7 +34,9 @@ export class CalculatorTool implements Tool {
     }
 
     const parser = new ArithmeticExpressionParser(input);
-    return String(parser.parse());
+    const output = String(parser.parse());
+    throwIfCancelled(options.signal);
+    return output;
   }
 }
 

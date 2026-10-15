@@ -1,3 +1,4 @@
+import { throwIfCancelled } from "./cancellation";
 import { AgentFailure } from "./agent-failure";
 import type { ModelProvider, ModelResponse, ModelMessage } from "./model-provider";
 import type { Tool } from "../tools/tool";
@@ -36,11 +37,15 @@ export class SingleAgent {
     task: string,
     onToolLifecycle?: (signal: ToolLifecycleSignal) => void,
     onModelCall?: (signal: ModelCallSignal) => void,
+    options: { signal?: AbortSignal } = {},
   ): Promise<ExperimentOutput> {
+    const { signal } = options;
+    throwIfCancelled(signal);
     const calculator = this.tools.find((tool) => tool.definition.name === "calculator");
     if (calculator && isSimpleArithmeticExpression(task)) {
       onModelCall?.({ type: "model.skipped", reason: "deterministic_arithmetic" });
-      const text = await executeTool(calculator, { expression: task }, onToolLifecycle);
+      const text = await executeTool(calculator, { expression: task }, onToolLifecycle, signal);
+      throwIfCancelled(signal);
       return { type: "text", text };
     }
     const prompt = this.configurationId === "structured" ? `${task}\n\n${STRUCTURED_AGENT_INSTRUCTION}` : task;
@@ -49,10 +54,12 @@ export class SingleAgent {
     const callIds = new Set<string>();
     let executionCount = 0;
     while (true) {
-      const request = { messages: structuredClone(messages), tools: structuredClone(definitions) };
+      throwIfCancelled(signal);
+      const request = { messages: structuredClone(messages), tools: structuredClone(definitions), ...(signal ? { signal } : {}) };
       validateRequest(request);
       const response = await callProvider(executionCount === 0 ? "initial" : "after_tool",
-        () => this.modelProvider.complete(request), onModelCall);
+        () => this.modelProvider.complete(request), onModelCall, signal);
+      throwIfCancelled(signal);
       if (response.type === "text") {
         if (!["stop", "unknown"].includes(response.finishReason)) throw new AgentFailure("provider_error");
         messages.push({ role: "assistant", type: "text", text: response.text });
@@ -67,23 +74,27 @@ export class SingleAgent {
       if (!tool) throw new AgentFailure("tool_unavailable");
       if (executionCount >= MAX_TOOL_EXECUTIONS) throw new AgentFailure("tool_limit");
       executionCount += 1;
-      const output = await executeTool(tool, call.arguments, onToolLifecycle);
+      const output = await executeTool(tool, call.arguments, onToolLifecycle, signal);
       messages.push({ role: "tool", callId: call.callId, toolName: call.toolName, output });
     }
   }
 }
 
 async function executeTool(tool: Tool, input: import("./model-provider").JsonObject,
-  onLifecycle?: (signal: ToolLifecycleSignal) => void): Promise<string> {
+  onLifecycle?: (signal: ToolLifecycleSignal) => void, signal?: AbortSignal): Promise<string> {
+  throwIfCancelled(signal);
   if (!tool.validateInput(input)) throw new AgentFailure("invalid_tool_call");
   const toolName = tool.definition.name;
   onLifecycle?.({ type: "tool.started", toolName });
   let output: string;
   try {
-    output = await tool.execute(input, {});
+    throwIfCancelled(signal);
+    output = await tool.execute(input, signal ? { signal } : {});
+    throwIfCancelled(signal);
     if (typeof output !== "string") throw new Error("Invalid tool result.");
   } catch (cause) {
     onLifecycle?.({ type: "tool.failed", toolName });
+    throwIfCancelled(signal);
     throw new AgentFailure("tool_failed", { cause, ...(cause instanceof Error ? { message: cause.message } : {}) });
   }
   onLifecycle?.({ type: "tool.completed", toolName });
@@ -91,15 +102,19 @@ async function executeTool(tool: Tool, input: import("./model-provider").JsonObj
 }
 
 async function callProvider(purpose: "initial" | "after_tool", operation: () => Promise<ModelResponse>,
-  onModelCall?: (signal: ModelCallSignal) => void): Promise<ModelResponse> {
+  onModelCall?: (signal: ModelCallSignal) => void, signal?: AbortSignal): Promise<ModelResponse> {
+  throwIfCancelled(signal);
   onModelCall?.({ type: "model.requested", purpose });
   const started = Date.now();
   let response: ModelResponse;
   try {
+    throwIfCancelled(signal);
     response = await operation();
+    throwIfCancelled(signal);
     validateResponse(response);
   } catch (cause) {
     onModelCall?.({ type: "model.responded", outcome: "error", durationMs: Date.now() - started });
+    throwIfCancelled(signal);
     if (cause instanceof AgentFailure && cause.failureCode === "invalid_tool_call") throw cause;
     throw new AgentFailure("provider_error", { cause });
   }

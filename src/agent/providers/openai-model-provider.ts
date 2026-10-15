@@ -1,3 +1,4 @@
+import { throwIfCancelled } from "../cancellation";
 import OpenAI, { APIConnectionError, APIError, APIUserAbortError } from "openai";
 import type { ModelProvider, ModelResponse, CompleteRequest } from "../model-provider";
 import { AgentFailure } from "../agent-failure";
@@ -18,6 +19,7 @@ export class OpenAIModelProvider implements ModelProvider {
   }
 
   async complete(request: CompleteRequest): Promise<ModelResponse> {
+    throwIfCancelled(request.signal);
     validateRequest(request);
     const input: OpenAI.Responses.ResponseInput = [];
     for (const message of request.messages) {
@@ -38,9 +40,11 @@ export class OpenAIModelProvider implements ModelProvider {
         parallel_tool_calls: false, tool_choice: "auto",
       }, { signal: request.signal });
     } catch (error) {
+      throwIfCancelled(request.signal);
       if (isRetryableOpenAIError(error)) throw new RetryableProviderError();
       throw new Error("OpenAI request failed.");
     }
+    throwIfCancelled(request.signal);
     const calls = response.output.filter((item) => item.type === "function_call");
     if (calls.length > 1) throw new AgentFailure("invalid_tool_call");
     const usage = modelUsage(response.usage?.input_tokens, response.usage?.output_tokens, response.usage?.total_tokens);

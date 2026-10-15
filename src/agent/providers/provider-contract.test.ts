@@ -39,12 +39,20 @@ function rawResponse(kind: Kind, response: FakeResponse): object {
   };
 }
 
-function harness(kind: Kind, responses: FakeResponse[], wrapped: boolean, transform: (raw: object) => object = (raw) => raw) {
+function harness(kind: Kind, responses: FakeResponse[], wrapped: boolean, transform: (raw: object) => object = (raw) => raw, hold = false) {
   const bodies: Record<string, unknown>[] = [];
   const signals: (AbortSignal | null)[] = [];
+  let started!: () => void;
+  const fetchStarted = new Promise<void>((resolve) => { started = resolve; });
   const fetcher: typeof fetch = async (url, init) => {
     const request = new Request(url, init);
     signals.push(request.signal);
+    started();
+    if (hold) return await new Promise<Response>((_resolve, reject) => {
+      const abort = () => { request.signal.removeEventListener("abort", abort); reject(new DOMException("Aborted", "AbortError")); };
+      request.signal.addEventListener("abort", abort, { once: true });
+      if (request.signal.aborted) abort();
+    });
     const body = await request.json() as Record<string, unknown>;
     bodies.push(body);
     const input = body.input as { type?: string }[];
@@ -56,7 +64,7 @@ function harness(kind: Kind, responses: FakeResponse[], wrapped: boolean, transf
     ? new OpenAIModelProvider(config, new OpenAI({ ...config, maxRetries: 0, fetch: fetcher }))
     : new GeminiModelProvider(config, new GoogleGenAI({ apiKey: config.apiKey, httpOptions: { fetch: fetcher } }));
   if (wrapped) provider = new RetryingModelProvider(provider, { sleep: async () => {}, random: () => 0 });
-  return { provider, bodies, signals };
+  return { provider, bodies, signals, fetchStarted };
 }
 
 for (const kind of kinds) for (const wrapped of [false, true]) describe(`${kind}${wrapped ? " + retry" : ""} shared contract`, () => {
@@ -105,6 +113,22 @@ for (const kind of kinds) for (const wrapped of [false, true]) describe(`${kind}
       const { provider, bodies } = harness(kind, [text], wrapped);
       await expect(provider.complete({ messages, tools: [] })).rejects.toThrow(); expect(bodies).toHaveLength(0);
     });
+  it("rejects a pre-aborted request without touching transport", async () => {
+    const { provider, bodies } = harness(kind, [text], wrapped);
+    const controller = new AbortController(); controller.abort("private cancellation reason");
+    await expect(provider.complete({ ...initial(), signal: controller.signal })).rejects.toMatchObject({ failureCode: "cancelled" });
+    expect(bodies).toHaveLength(0);
+  });
+  if (kind !== "fake") it("propagates cancellation through the real SDK into fetch", async () => {
+    const h = harness(kind, [text], wrapped, (raw) => raw, true);
+    const controller = new AbortController();
+    const pending = h.provider.complete({ ...initial(), signal: controller.signal });
+    const rejected = expect(pending).rejects.toMatchObject({ failureCode: "cancelled" });
+    await h.fetchStarted;
+    controller.abort("private cancellation reason");
+    await rejected;
+    expect(h.signals).toHaveLength(1); expect(h.signals[0]?.aborted).toBe(true);
+  });
   it("rejects invalid tool argument envelopes", async () => {
     const invalid = { ...call, arguments: [] } as unknown as typeof call;
     await expect(harness(kind, [{ type: "tool_call", call: invalid }], wrapped).provider.complete(initial())).rejects.toMatchObject({ failureCode: "invalid_tool_call" });

@@ -1,3 +1,4 @@
+import { throwIfCancelled } from "../cancellation";
 import { GoogleGenAI, type Interactions } from "@google/genai";
 import type { ModelProvider, ModelResponse, CompleteRequest } from "../model-provider";
 import { AgentFailure } from "../agent-failure";
@@ -19,6 +20,7 @@ export class GeminiModelProvider implements ModelProvider {
   }
 
   async complete(request: CompleteRequest): Promise<ModelResponse> {
+    throwIfCancelled(request.signal);
     validateRequest(request);
     const input: Interactions.Step[] = [];
     let system: string | undefined;
@@ -39,9 +41,11 @@ export class GeminiModelProvider implements ModelProvider {
           parameters: structuredClone(tool.parameters) })),
       }, { maxRetries: 0, signal: request.signal }) as Interactions.Interaction;
     } catch (error) {
+      throwIfCancelled(request.signal);
       if (isRetryableGeminiError(error)) throw new RetryableProviderError();
       throw new Error("Gemini request failed.");
     }
+    throwIfCancelled(request.signal);
     const calls = interaction.steps?.filter((step) => step.type === "function_call") ?? [];
     if (calls.length > 1) throw new AgentFailure("invalid_tool_call");
     const usage = modelUsage(interaction.usage?.total_input_tokens, interaction.usage?.total_output_tokens, interaction.usage?.total_tokens);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { EvaluationResult, ExperimentEvent, ExperimentOutput, ExperimentStatus } from "@/experiments/types";
 import type {
   ExperimentHistoryRecord,
@@ -146,6 +146,13 @@ export default function Home() {
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [comparisonError, setComparisonError] = useState<string | null>(null);
 
+  const activeExperiment = useRef<AbortController | null>(null);
+  const activeComparison = useRef<AbortController | null>(null);
+  useEffect(() => () => {
+    activeExperiment.current?.abort();
+    activeComparison.current?.abort();
+  }, []);
+
   const refreshHistory = useCallback(async () => {
     setHistoryLoading(true);
     setHistoryError(null);
@@ -220,8 +227,11 @@ export default function Home() {
     setEvaluation(null);
     setStatus("running");
 
+    const controller = new AbortController();
+    activeExperiment.current = controller;
     try {
       const response = await fetch("/api/experiments", {
+        signal: controller.signal,
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(selectedScenarioId ? { scenarioId: selectedScenarioId } : { task: submittedTask }),
@@ -261,6 +271,7 @@ export default function Home() {
           return;
         }
 
+        if (controller.signal.aborted) return;
         const experimentEvent = JSON.parse(data) as ExperimentEvent;
         setEvents((currentEvents) => [...currentEvents, experimentEvent]);
 
@@ -318,16 +329,21 @@ export default function Home() {
         }
       } finally {
         reader.releaseLock();
-        await refreshHistory();
+        if (!controller.signal.aborted) await refreshHistory();
       }
 
-      if (!receivedFinalEvent) {
+      if (!receivedFinalEvent && !controller.signal.aborted) {
         setErrorMessage("The event stream ended before the experiment finished.");
         setStatus("failed");
       }
     } catch {
-      setErrorMessage("The experiment could not be completed because the event stream failed.");
-      setStatus("failed");
+      if (!controller.signal.aborted) {
+        setErrorMessage("The experiment could not be completed because the event stream failed.");
+        setStatus("failed");
+      }
+    } finally {
+      controller.abort();
+      if (activeExperiment.current === controller) activeExperiment.current = null;
     }
   }
 
@@ -336,19 +352,27 @@ export default function Home() {
     setComparisonLoading(true);
     setComparisonError(null);
     setComparisonResult(null);
+    const controller = new AbortController();
+    activeComparison.current = controller;
     try {
       const response = await fetch("/api/experiments/compare", {
+        signal: controller.signal,
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scenarioId: selectedScenarioId }),
       });
       if (!response.ok) throw new Error();
-      setComparisonResult(await response.json() as ComparisonResult);
-      await refreshHistory();
+      const result = await response.json() as ComparisonResult;
+      if (!controller.signal.aborted) {
+        setComparisonResult(result);
+        await refreshHistory();
+      }
     } catch {
-      setComparisonError("The comparison could not be completed.");
+      if (!controller.signal.aborted) setComparisonError("The comparison could not be completed.");
     } finally {
-      setComparisonLoading(false);
+      if (!controller.signal.aborted) setComparisonLoading(false);
+      controller.abort();
+      if (activeComparison.current === controller) activeComparison.current = null;
     }
   }
 
