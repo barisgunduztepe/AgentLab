@@ -33,6 +33,10 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # layout.tsx uses Next's generated global LayoutProps; a fresh checkout has no .next/types yet.
+      - name: Generate route types
+        run: npx next typegen
+
       - name: Type check
         run: npx tsc --noEmit
 
