@@ -1,6 +1,6 @@
 import { AgentFailure, failureCodeOf } from "./agent-failure";
 import type { ModelResponse } from "./model-provider";
-import type { ToolLifecycleSignal } from "./single-agent";
+import type { ModelCallSignal, ToolLifecycleSignal } from "./single-agent";
 import { SingleAgent } from "./single-agent";
 
 const HANDOFF_FAILURE_MESSAGE = "Agent handoff could not be completed.";
@@ -24,6 +24,9 @@ export type AgentLifecycleSignal =
       failureCode: "invalid_handoff";
     };
 
+/** Everything an agent run reports besides tool lifecycle: agent/handoff lifecycle and the model calls of each agent. */
+export type AgentSignal = AgentLifecycleSignal | (ModelCallSignal & { agentId?: AgentId });
+
 export class TwoAgentHandoffRunner {
   constructor(
     private readonly analyst: SingleAgent,
@@ -33,7 +36,7 @@ export class TwoAgentHandoffRunner {
   async run(
     task: string,
     onToolLifecycle?: (signal: ToolLifecycleSignal & { agentId?: AgentId }) => void,
-    onLifecycle?: (signal: AgentLifecycleSignal) => void,
+    onLifecycle?: (signal: AgentSignal) => void,
   ): Promise<Extract<ModelResponse, { type: "text" }>> {
     if (task.trim().length === 0) {
       throw new AgentFailure("invalid_handoff", { message: HANDOFF_FAILURE_MESSAGE });
@@ -46,6 +49,7 @@ export class TwoAgentHandoffRunner {
       analystResponse = await this.analyst.run(
         buildAnalystAssignment(task),
         (signal) => onToolLifecycle?.({ ...signal, agentId: "analyst" }),
+        (signal) => onLifecycle?.({ ...signal, agentId: "analyst" }),
       );
     } catch (error) {
       onLifecycle?.({
@@ -87,6 +91,7 @@ export class TwoAgentHandoffRunner {
       const finalizerResponse = await this.finalizer.run(
         buildFinalizerAssignment(handoff),
         (signal) => onToolLifecycle?.({ ...signal, agentId: "finalizer" }),
+        (signal) => onLifecycle?.({ ...signal, agentId: "finalizer" }),
       );
       onLifecycle?.({
         type: "agent.lifecycle",

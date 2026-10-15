@@ -8,6 +8,16 @@ import type { Tool } from "../tools/tool";
 import { runExperiment } from "./run-experiment";
 import type { ExperimentEvent } from "./types";
 
+/**
+ * Collects events except model call events. These ordering tests are about tool and agent lifecycle;
+ * model call events have their own tests below.
+ */
+function withoutModelEvents(events: ExperimentEvent[]): (event: ExperimentEvent) => void {
+  return (event) => {
+    if (!event.type.startsWith("model.")) events.push(event);
+  };
+}
+
 describe("runExperiment", () => {
   it("emits the scoped Analyst-to-Finalizer lifecycle in order while retaining aggregate events", async () => {
     const events: ExperimentEvent[] = [];
@@ -18,7 +28,7 @@ describe("runExperiment", () => {
       new SingleAgent(new FakeModelProvider([{ type: "text", text: finalizerText }])),
     );
 
-    const experiment = await runExperiment("Explain a thermostat.", agent, (event) => events.push(event));
+    const experiment = await runExperiment("Explain a thermostat.", agent, withoutModelEvents(events));
 
     expect(experiment.status).toBe("completed");
     expect(experiment.output).toEqual({ type: "text", text: finalizerText });
@@ -51,7 +61,7 @@ describe("runExperiment", () => {
     });
     const runner = new TwoAgentHandoffRunner(failingAnalyst, new SingleAgent(new FakeModelProvider()));
 
-    const experiment = await runExperiment("Explain a thermostat.", runner, (event) => events.push(event));
+    const experiment = await runExperiment("Explain a thermostat.", runner, withoutModelEvents(events));
 
     expect(experiment.status).toBe("failed");
     expect(events.map((event) => event.type)).toEqual([
@@ -79,7 +89,7 @@ describe("runExperiment", () => {
       new SingleAgent(new FakeModelProvider([{ type: "text", text: "Must not run." }])),
     );
 
-    const experiment = await runExperiment("Explain a thermostat.", runner, (event) => events.push(event));
+    const experiment = await runExperiment("Explain a thermostat.", runner, withoutModelEvents(events));
 
     expect(experiment.status).toBe("failed");
     expect(events.map((event) => event.type)).toEqual([
@@ -111,7 +121,7 @@ describe("runExperiment", () => {
       }),
     );
 
-    const experiment = await runExperiment("Explain a thermostat.", runner, (event) => events.push(event));
+    const experiment = await runExperiment("Explain a thermostat.", runner, withoutModelEvents(events));
 
     expect(experiment.status).toBe("failed");
     expect(events.map((event) => event.type)).toEqual([
@@ -155,7 +165,7 @@ describe("runExperiment", () => {
       { type: "text", text: "Finalizer contribution." },
     ]), [makeTool("finalizer-private-tool", privateOutputB)]);
 
-    await runExperiment("Complete this multi-step task.", new TwoAgentHandoffRunner(analyst, finalizer), (event) => events.push(event));
+    await runExperiment("Complete this multi-step task.", new TwoAgentHandoffRunner(analyst, finalizer), withoutModelEvents(events));
 
     expect(events.map((event) => event.type)).toEqual([
       "experiment.started",
@@ -196,7 +206,7 @@ describe("runExperiment", () => {
       new SingleAgent(new FakeModelProvider([{ type: "text", text: "Must not run." }])),
     );
 
-    const experiment = await runExperiment("Try an unsupported operation.", runner, (event) => events.push(event));
+    const experiment = await runExperiment("Try an unsupported operation.", runner, withoutModelEvents(events));
 
     expect(experiment.status).toBe("failed");
     expect(events.map((event) => event.type)).toEqual([
@@ -227,7 +237,7 @@ describe("runExperiment", () => {
       [new CalculatorTool()],
     );
 
-    const experiment = await runExperiment("12 * 8", agent, (event) => events.push(event));
+    const experiment = await runExperiment("12 * 8", agent, withoutModelEvents(events));
 
     expect(experiment.status).toBe("completed");
     expect(experiment.output).toEqual({ type: "text", text: "96" });
@@ -257,7 +267,7 @@ describe("runExperiment", () => {
       [new CalculatorTool()],
     );
 
-    const experiment = await runExperiment("5 / 0", agent, (event) => events.push(event));
+    const experiment = await runExperiment("5 / 0", agent, withoutModelEvents(events));
 
     expect(experiment.status).toBe("failed");
     expect(experiment.errorMessage).toBe("Agent görevi tamamlayamadı.");
@@ -291,7 +301,7 @@ describe("runExperiment", () => {
     const experiment = await runExperiment(
       task,
       new SingleAgent(modelProvider, [new CalculatorTool()]),
-      (event) => events.push(event),
+      withoutModelEvents(events),
     );
 
     expect(experiment.status).toBe("completed");
@@ -325,7 +335,7 @@ describe("runExperiment", () => {
       { type: "tool_call", callId: "fake-call", toolName, input: "sensitive input" },
     ]), [new CalculatorTool()]);
 
-    const experiment = await runExperiment("Please calculate this.", agent, (event) => events.push(event));
+    const experiment = await runExperiment("Please calculate this.", agent, withoutModelEvents(events));
 
     expect(experiment.status).toBe("failed");
     expect(experiment.errorMessage).toBe("Agent görevi tamamlayamadı.");
@@ -358,7 +368,7 @@ describe("runExperiment", () => {
     const experiment = await runExperiment(
       "Run the failing tool.",
       new SingleAgent(provider, [failingTool]),
-      (event) => events.push(event),
+      withoutModelEvents(events),
     );
 
     expect(experiment.status).toBe("failed");
@@ -396,7 +406,7 @@ describe("runExperiment", () => {
     const experiment = await runExperiment(
       "Use the private tool.",
       new SingleAgent(provider, [tool]),
-      (event) => events.push(event),
+      withoutModelEvents(events),
     );
 
     expect(experiment.status).toBe("completed");
@@ -429,7 +439,7 @@ describe("runExperiment", () => {
     const experiment = await runExperiment(
       "Check the failed experiment flow.",
       new SingleAgent(modelProvider),
-      (event) => events.push(event),
+      withoutModelEvents(events),
     );
 
     expect(experiment.status).toBe("failed");
@@ -454,7 +464,7 @@ describe("runExperiment", () => {
     const events: ExperimentEvent[] = [];
     const agent = { run: async () => { throw new Error("raw unexpected error"); } };
 
-    const experiment = await runExperiment("Fail unexpectedly.", agent, (event) => events.push(event));
+    const experiment = await runExperiment("Fail unexpectedly.", agent, withoutModelEvents(events));
 
     expect(experiment.failureCode).toBe("unknown");
     expect(events.at(-1)).toMatchObject({ type: "experiment.failed", failureCode: "unknown" });
@@ -465,9 +475,118 @@ describe("runExperiment", () => {
     const events: ExperimentEvent[] = [];
     const agent = { run: async () => ({ type: "text" as const, text: "Done." }) };
 
-    const experiment = await runExperiment("Finish.", agent, (event) => events.push(event));
+    const experiment = await runExperiment("Finish.", agent, withoutModelEvents(events));
 
     expect(experiment).not.toHaveProperty("failureCode");
     expect(events.some((event) => "failureCode" in event)).toBe(false);
+  });
+
+  describe("model call events", () => {
+    const describeEvent = (event: ExperimentEvent) =>
+      event.type === "model.requested" ? `${event.type}:${event.purpose}`
+        : event.type === "model.responded" ? `${event.type}:${event.outcome}`
+          : event.type;
+
+    it("places each model call around the tool it triggers, in order", async () => {
+      const events: ExperimentEvent[] = [];
+      const agent = new SingleAgent(new FakeModelProvider([
+        { type: "tool_call", callId: "call-1", toolName: "calculator", input: "2 + 3" },
+        { type: "text", text: "The sum is 5." },
+      ]), [new CalculatorTool()]);
+
+      await runExperiment("Use the calculator.", agent, (event) => events.push(event));
+
+      expect(events.map(describeEvent)).toEqual([
+        "experiment.started",
+        "agent.started",
+        "model.requested:initial",
+        "model.responded:tool_call",
+        "tool.started",
+        "tool.completed",
+        "model.requested:after_tool",
+        "model.responded:text",
+        "agent.completed",
+        "experiment.completed",
+      ]);
+      for (const event of events.filter((item) => item.type === "model.responded")) {
+        expect(event).toMatchObject({ durationMs: expect.any(Number) });
+        expect((event as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(0);
+      }
+      expect(events.some((event) => "agentId" in event)).toBe(false);
+    });
+
+    it("attributes each model call to the agent that made it, inside that agent's lifecycle", async () => {
+      const events: ExperimentEvent[] = [];
+      const runner = new TwoAgentHandoffRunner(
+        new SingleAgent(new FakeModelProvider([{ type: "text", text: "Analyst notes." }])),
+        new SingleAgent(new FakeModelProvider([{ type: "text", text: "Final answer." }])),
+      );
+
+      await runExperiment("Explain something.", runner, (event) => events.push(event));
+
+      const timeline = events.map((event) => {
+        if (event.type === "agent.lifecycle") return `${event.agentId}:${event.phase}`;
+        if (event.type === "model.requested" || event.type === "model.responded") return `${event.agentId}:${describeEvent(event)}`;
+        return event.type;
+      });
+      expect(timeline).toEqual([
+        "experiment.started",
+        "agent.started",
+        "analyst:started",
+        "analyst:model.requested:initial",
+        "analyst:model.responded:text",
+        "analyst:completed",
+        "handoff.completed",
+        "finalizer:started",
+        "finalizer:model.requested:initial",
+        "finalizer:model.responded:text",
+        "finalizer:completed",
+        "agent.completed",
+        "experiment.completed",
+      ]);
+    });
+
+    it("reports a failed provider call as an error response right before experiment.failed", async () => {
+      const events: ExperimentEvent[] = [];
+      const provider: ModelProvider = {
+        async generateResponse() { throw new Error("private provider response"); },
+        async continueAfterToolCall() { throw new Error("private provider response"); },
+      };
+
+      await runExperiment("Say hello.", new SingleAgent(provider), (event) => events.push(event));
+
+      expect(events.map(describeEvent)).toEqual([
+        "experiment.started",
+        "agent.started",
+        "model.requested:initial",
+        "model.responded:error",
+        "experiment.failed",
+      ]);
+      expect(events.at(-1)).toMatchObject({ failureCode: "provider_error" });
+      expect(JSON.stringify(events)).not.toContain("private provider response");
+    });
+
+    it("keeps prompts, answers, tool data, and call IDs out of model call events", async () => {
+      const events: ExperimentEvent[] = [];
+      const agent = new SingleAgent(new FakeModelProvider([
+        { type: "tool_call", callId: "private-call-id", toolName: "calculator", input: "6 * 7" },
+        { type: "text", text: "private final answer" },
+      ]), [new CalculatorTool()]);
+
+      await runExperiment("private task text", agent, (event) => events.push(event));
+
+      const modelEvents = JSON.stringify(events.filter((event) => event.type.startsWith("model.")));
+      for (const secret of ["private task text", "private final answer", "private-call-id", "6 * 7", "42"]) {
+        expect(modelEvents).not.toContain(secret);
+      }
+    });
+
+    it("emits no model call events when the deterministic calculator path solves the task", async () => {
+      const events: ExperimentEvent[] = [];
+
+      await runExperiment("12 * 8", new SingleAgent(new FakeModelProvider(), [new CalculatorTool()]), (event) => events.push(event));
+
+      expect(events.some((event) => event.type.startsWith("model."))).toBe(false);
+    });
   });
 });

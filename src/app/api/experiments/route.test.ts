@@ -25,12 +25,18 @@ function post(body: unknown): Promise<Response> {
   }));
 }
 
-async function readEvents(response: Response): Promise<Record<string, unknown>[]> {
+/** Every streamed event, including model call events. */
+async function readAllEvents(response: Response): Promise<Record<string, unknown>[]> {
   const body = await response.text();
   return body
     .split("\n\n")
     .filter(Boolean)
     .map((block) => JSON.parse(block.split("\n").find((line) => line.startsWith("data: "))!.slice(6)) as Record<string, unknown>);
+}
+
+/** Streamed events without model call events, so ordering tests stay about tools, lifecycle, and evaluation. */
+async function readEvents(response: Response): Promise<Record<string, unknown>[]> {
+  return (await readAllEvents(response)).filter((event) => !String(event.type).startsWith("model."));
 }
 
 afterEach(async () => {
@@ -149,6 +155,33 @@ describe("POST /api/experiments fixed scenarios", () => {
       scenarioId: "direct-text",
       evaluation: { passed: true },
     });
+  });
+
+  it("streams model call events and stores the same events in history", async () => {
+    process.env.AGENTLAB_MODEL_PROVIDER = "fake";
+
+    const events = await readAllEvents(await post({ scenarioId: "calculator-once" }));
+    const modelEvents = events.filter((event) => String(event.type).startsWith("model."));
+
+    expect(events.map((event) => event.type)).toEqual([
+      "experiment.started",
+      "agent.started",
+      "model.requested",
+      "model.responded",
+      "tool.started",
+      "tool.completed",
+      "model.requested",
+      "model.responded",
+      "agent.completed",
+      "experiment.completed",
+      "scenario.evaluated",
+    ]);
+    expect(modelEvents.map((event) => event.purpose ?? event.outcome)).toEqual([
+      "initial", "tool_call", "after_tool", "text",
+    ]);
+
+    const [record] = await historyStore.readAll();
+    expect(record.events.filter((event) => event.type.startsWith("model."))).toEqual(modelEvents);
   });
 
   it("runs the single-calculator scenario with one tool lifecycle", async () => {

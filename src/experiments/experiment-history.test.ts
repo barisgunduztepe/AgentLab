@@ -394,6 +394,57 @@ describe("ExperimentHistoryStore", () => {
     )).toBe("/home/tester/.local/share/AgentLab/experiments.json");
   });
 
+  describe("model call events", () => {
+    const at = "2026-10-01T00:00:01.000Z";
+    const recordWith = (...events: unknown[]): ExperimentHistoryRecord => ({
+      ...historyRecord("model-run", "completed", at),
+      events: events.map((event) => ({ experimentId: "model-run", occurredAt: at, ...(event as object) })) as
+        ExperimentHistoryRecord["events"],
+    });
+
+    it("stores model.requested and model.responded events with and without an agent", async () => {
+      const record = recordWith(
+        { type: "model.requested", purpose: "initial" },
+        { type: "model.responded", outcome: "tool_call", durationMs: 12 },
+        { type: "model.requested", purpose: "after_tool", agentId: "analyst" },
+        { type: "model.responded", outcome: "text", durationMs: 0, agentId: "analyst" },
+        { type: "model.responded", outcome: "error", durationMs: 3, agentId: "finalizer" },
+      );
+      await store.append(record);
+
+      await expect(store.getById("model-run")).resolves.toEqual(record);
+    });
+
+    it.each([
+      ["unknown purpose", { type: "model.requested", purpose: "retry" }],
+      ["missing purpose", { type: "model.requested" }],
+      ["unknown outcome", { type: "model.responded", outcome: "refusal", durationMs: 1 }],
+      ["negative duration", { type: "model.responded", outcome: "text", durationMs: -1 }],
+      ["non-numeric duration", { type: "model.responded", outcome: "text", durationMs: "5" }],
+      ["non-finite duration", { type: "model.responded", outcome: "text", durationMs: Number.POSITIVE_INFINITY }],
+      ["unknown agent", { type: "model.requested", purpose: "initial", agentId: "critic" }],
+    ])("rejects %s", async (_label, event) => {
+      expect(() => store.append(recordWith(event))).toThrow(expect.objectContaining({ code: "invalid_snapshot" }));
+
+      await writeFile(store.filePath, JSON.stringify({ schemaVersion: 1, records: [recordWith(event)] }), "utf8");
+      await expect(store.readAll()).rejects.toMatchObject({ code: "invalid_snapshot" });
+    });
+
+    it("drops unexpected fields such as prompt text when saving and rejects them when reading", async () => {
+      const leaky = recordWith(
+        { type: "model.requested", purpose: "initial", prompt: "private prompt", apiKey: "private-key" },
+        { type: "model.responded", outcome: "text", durationMs: 4, text: "private answer" },
+      );
+      await store.append(leaky);
+
+      const raw = await readFile(store.filePath, "utf8");
+      for (const secret of ["private prompt", "private-key", "private answer"]) expect(raw).not.toContain(secret);
+
+      await writeFile(store.filePath, JSON.stringify({ schemaVersion: 1, records: [leaky] }), "utf8");
+      await expect(store.readAll()).rejects.toMatchObject({ code: "invalid_snapshot" });
+    });
+  });
+
   describe("failure codes on experiment.failed events", () => {
     const failedRecord = (failureCode?: unknown): ExperimentHistoryRecord => {
       const endedAt = "2026-10-01T00:00:01.000Z";

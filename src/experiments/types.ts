@@ -22,6 +22,8 @@ export type ExperimentEventType =
   | "tool.started"
   | "tool.completed"
   | "tool.failed"
+  | "model.requested"
+  | "model.responded"
   | "agent.completed"
   | "experiment.completed"
   | "experiment.failed"
@@ -51,6 +53,13 @@ export type ExperimentEvent =
   | (ExperimentEventBase & { type: "tool.started"; toolName: string; agentId?: ExperimentAgentId })
   | (ExperimentEventBase & { type: "tool.completed"; toolName: string; agentId?: ExperimentAgentId })
   | (ExperimentEventBase & { type: "tool.failed"; toolName: string; agentId?: ExperimentAgentId })
+  | (ExperimentEventBase & { type: "model.requested"; purpose: "initial" | "after_tool"; agentId?: ExperimentAgentId })
+  | (ExperimentEventBase & {
+      type: "model.responded";
+      outcome: "text" | "tool_call" | "error";
+      durationMs: number;
+      agentId?: ExperimentAgentId;
+    })
   | (ExperimentEventBase & { type: "agent.lifecycle"; agentId: ExperimentAgentId; phase: "started" })
   | (ExperimentEventBase & { type: "agent.lifecycle"; agentId: ExperimentAgentId; phase: "completed"; output: string })
   | (ExperimentEventBase & {

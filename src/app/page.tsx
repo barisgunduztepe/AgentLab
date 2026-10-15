@@ -80,6 +80,12 @@ function eventLabel(event: ExperimentEvent): string {
     return `${event.type} — ${event.failureCode}`;
   }
 
+  if (event.type === "model.requested" || event.type === "model.responded") {
+    const agent = event.agentId ? `${event.agentId === "analyst" ? "Analyst" : "Finalizer"} · ` : "";
+    const detail = event.type === "model.requested" ? event.purpose : `${event.outcome} · ${event.durationMs} ms`;
+    return `${event.type} — ${agent}${detail}`;
+  }
+
   if ("agentId" in event && event.agentId) {
     return `${event.type} — ${event.agentId === "analyst" ? "Analyst" : "Finalizer"} · ${event.toolName}`;
   }

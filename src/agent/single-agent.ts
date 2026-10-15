@@ -12,6 +12,14 @@ export type ToolLifecycleSignal =
   | { type: "tool.completed"; toolName: string }
   | { type: "tool.failed"; toolName: string };
 
+/**
+ * One model call as seen from the agent. Carries only the call's purpose, how long it took, and what kind of
+ * answer came back; prompts, answers, tool input/output, and provider error text are never included.
+ */
+export type ModelCallSignal =
+  | { type: "model.requested"; purpose: "initial" | "after_tool" }
+  | { type: "model.responded"; outcome: "text" | "tool_call" | "error"; durationMs: number };
+
 export class SingleAgent {
   constructor(
     private readonly modelProvider: ModelProvider,
@@ -22,6 +30,7 @@ export class SingleAgent {
   async run(
     task: string,
     onToolLifecycle?: (signal: ToolLifecycleSignal) => void,
+    onModelCall?: (signal: ModelCallSignal) => void,
   ): Promise<Extract<ModelResponse, { type: "text" }>> {
     const calculatorTool = this.tools.find((tool) => tool.name === "calculator");
 
@@ -43,7 +52,11 @@ export class SingleAgent {
     const prompt = this.configurationId === "structured"
       ? `${task}\n\n${STRUCTURED_AGENT_INSTRUCTION}`
       : task;
-    let response = await callProvider(() => this.modelProvider.generateResponse(prompt, this.tools));
+    let response = await callProvider(
+      "initial",
+      () => this.modelProvider.generateResponse(prompt, this.tools),
+      onModelCall,
+    );
     let executionCount = 0;
 
     while (response.type === "tool_call") {
@@ -82,7 +95,11 @@ export class SingleAgent {
 
       onToolLifecycle?.({ type: "tool.completed", toolName: tool.name });
       const callId = response.callId;
-      response = await callProvider(() => this.modelProvider.continueAfterToolCall(callId, toolResult));
+      response = await callProvider(
+        "after_tool",
+        () => this.modelProvider.continueAfterToolCall(callId, toolResult),
+        onModelCall,
+      );
     }
 
     return response;
@@ -97,12 +114,25 @@ function toToolFailure(error: unknown): AgentFailure {
   });
 }
 
-async function callProvider(operation: () => Promise<ModelResponse>): Promise<ModelResponse> {
+/** Runs one provider call, reporting it as a model call and turning provider errors into a safe failure. */
+async function callProvider(
+  purpose: "initial" | "after_tool",
+  operation: () => Promise<ModelResponse>,
+  onModelCall?: (signal: ModelCallSignal) => void,
+): Promise<ModelResponse> {
+  onModelCall?.({ type: "model.requested", purpose });
+  const startedAtMs = Date.now();
+
+  let response: ModelResponse;
   try {
-    return await operation();
+    response = await operation();
   } catch (error) {
+    onModelCall?.({ type: "model.responded", outcome: "error", durationMs: Date.now() - startedAtMs });
     throw new AgentFailure("provider_error", { cause: error });
   }
+
+  onModelCall?.({ type: "model.responded", outcome: response.type, durationMs: Date.now() - startedAtMs });
+  return response;
 }
 
 function isSimpleArithmeticExpression(task: string): boolean {

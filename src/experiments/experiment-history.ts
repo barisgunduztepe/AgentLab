@@ -372,6 +372,15 @@ function isValidEvent(value: unknown, strictKeys: boolean): value is ExperimentE
       return hasKeys(value.agentId === undefined ? ["toolName"] : ["toolName", "agentId"]) &&
         typeof value.toolName === "string" &&
         (value.agentId === undefined || value.agentId === "analyst" || value.agentId === "finalizer");
+    case "model.requested":
+      return hasKeys(value.agentId === undefined ? ["purpose"] : ["purpose", "agentId"]) &&
+        (value.purpose === "initial" || value.purpose === "after_tool") &&
+        (value.agentId === undefined || value.agentId === "analyst" || value.agentId === "finalizer");
+    case "model.responded":
+      return hasKeys(value.agentId === undefined ? ["outcome", "durationMs"] : ["outcome", "durationMs", "agentId"]) &&
+        (value.outcome === "text" || value.outcome === "tool_call" || value.outcome === "error") &&
+        typeof value.durationMs === "number" && Number.isFinite(value.durationMs) && value.durationMs >= 0 &&
+        (value.agentId === undefined || value.agentId === "analyst" || value.agentId === "finalizer");
     case "agent.lifecycle":
       if (value.agentId !== "analyst" && value.agentId !== "finalizer") return false;
       if (value.phase === "started") return hasKeys(["agentId", "phase"]);
@@ -421,6 +430,16 @@ function sanitizeEvent(event: ExperimentEvent, strictKeys: boolean): ExperimentE
     case "tool.completed":
     case "tool.failed":
       return { ...base, type: event.type, toolName: event.toolName, ...(event.agentId ? { agentId: event.agentId } : {}) };
+    case "model.requested":
+      return { ...base, type: event.type, purpose: event.purpose, ...(event.agentId ? { agentId: event.agentId } : {}) };
+    case "model.responded":
+      return {
+        ...base,
+        type: event.type,
+        outcome: event.outcome,
+        durationMs: event.durationMs,
+        ...(event.agentId ? { agentId: event.agentId } : {}),
+      };
     case "agent.lifecycle":
       if (event.phase === "started") return { ...base, type: event.type, agentId: event.agentId, phase: event.phase };
       if (event.phase === "completed") return { ...base, type: event.type, agentId: event.agentId, phase: event.phase, output: event.output };

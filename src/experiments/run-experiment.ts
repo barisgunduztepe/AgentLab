@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { failureCodeOf } from "../agent/agent-failure";
 import type { ToolLifecycleSignal } from "../agent/single-agent";
-import type { AgentId, AgentLifecycleSignal } from "../agent/two-agent-handoff-runner";
+import type { AgentId, AgentSignal } from "../agent/two-agent-handoff-runner";
 import type { Experiment, ExperimentEvent, ExperimentOutput } from "./types";
 
 type ExperimentRunner = {
   run(
     task: string,
     onToolLifecycle?: (signal: ToolLifecycleSignal & { agentId?: AgentId }) => void,
-    onLifecycle?: (signal: AgentLifecycleSignal) => void,
+    onLifecycle?: (signal: AgentSignal) => void,
   ): Promise<ExperimentOutput>;
 };
 

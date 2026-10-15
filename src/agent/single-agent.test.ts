@@ -3,7 +3,7 @@ import type { ModelProvider, ModelResponse } from "./model-provider";
 import { FakeModelProvider } from "./providers/fake-model-provider";
 import { RetryingModelProvider } from "./providers/retrying-model-provider";
 import { RetryableProviderError } from "./retryable-provider-error";
-import { SingleAgent, STRUCTURED_AGENT_INSTRUCTION, type ToolLifecycleSignal } from "./single-agent";
+import { SingleAgent, STRUCTURED_AGENT_INSTRUCTION, type ModelCallSignal, type ToolLifecycleSignal } from "./single-agent";
 import { CalculatorTool } from "../tools/calculator-tool";
 import type { Tool } from "../tools/tool";
 
@@ -200,6 +200,90 @@ describe("SingleAgent", () => {
       "tool.started", "tool.completed",
       "tool.started", "tool.completed",
     ]);
+  });
+
+  describe("model call signals", () => {
+    const collect = () => {
+      const signals: ModelCallSignal[] = [];
+      return { signals, onModelCall: (signal: ModelCallSignal) => signals.push(signal) };
+    };
+
+    it("reports one request and one text response for a plain model answer", async () => {
+      const { signals, onModelCall } = collect();
+      const agent = new SingleAgent(new FakeModelProvider([{ type: "text", text: "Hello." }]));
+
+      await agent.run("Say hello.", undefined, onModelCall);
+
+      expect(signals).toEqual([
+        { type: "model.requested", purpose: "initial" },
+        { type: "model.responded", outcome: "text", durationMs: expect.any(Number) },
+      ]);
+      expect((signals[1] as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it("reports a call per provider round trip, with the tool result continuation marked after_tool", async () => {
+      const { signals, onModelCall } = collect();
+      const agent = new SingleAgent(new FakeModelProvider([
+        { type: "tool_call", callId: "call-1", toolName: "calculator", input: "1 + 1" },
+        { type: "text", text: "It is 2." },
+      ]), [new CalculatorTool()]);
+
+      await agent.run("Use the calculator.", undefined, onModelCall);
+
+      expect(signals.map((signal) => signal.type === "model.requested" ? signal.purpose : signal.outcome)).toEqual([
+        "initial", "tool_call", "after_tool", "text",
+      ]);
+    });
+
+    it("reports a failed call as an error outcome and still fails with provider_error", async () => {
+      const { signals, onModelCall } = collect();
+      const agent = new SingleAgent({
+        generateResponse: async () => { throw new Error("private provider detail"); },
+        continueAfterToolCall: unusedContinuation,
+      });
+
+      await expect(agent.run("Say hello.", undefined, onModelCall)).rejects.toMatchObject({ failureCode: "provider_error" });
+
+      expect(signals.map((signal) => signal.type)).toEqual(["model.requested", "model.responded"]);
+      expect(signals[1]).toMatchObject({ outcome: "error" });
+      expect(JSON.stringify(signals)).not.toContain("private provider detail");
+    });
+
+    it("never includes prompts, answers, or tool data in the signals", async () => {
+      const { signals, onModelCall } = collect();
+      const agent = new SingleAgent(new FakeModelProvider([
+        { type: "tool_call", callId: "private-call-id", toolName: "calculator", input: "7 * 6" },
+        { type: "text", text: "private final answer" },
+      ]), [new CalculatorTool()]);
+
+      await agent.run("private task text", undefined, onModelCall);
+
+      const serialized = JSON.stringify(signals);
+      for (const secret of ["private task text", "private final answer", "private-call-id", "7 * 6", "42"]) {
+        expect(serialized).not.toContain(secret);
+      }
+    });
+
+    it("does not report a model call when the task is solved by the deterministic calculator path", async () => {
+      const { signals, onModelCall } = collect();
+      const agent = new SingleAgent(new FakeModelProvider(), [new CalculatorTool()]);
+
+      await agent.run("12 * 8", undefined, onModelCall);
+
+      expect(signals).toEqual([]);
+    });
+
+    it("does not let a failing signal callback masquerade as a provider failure", async () => {
+      const agent = new SingleAgent(new FakeModelProvider([{ type: "text", text: "Hello." }]));
+      const throwingCallback = (signal: ModelCallSignal) => {
+        if (signal.type === "model.responded") throw new Error("callback bug");
+      };
+
+      await expect(agent.run("Say hello.", undefined, throwingCallback)).rejects.toThrow("callback bug");
+      await expect(agent.run("Say hello.", undefined, throwingCallback)).rejects.not.toMatchObject({
+        failureCode: "provider_error",
+      });
+    });
   });
 
   describe("failure codes", () => {
