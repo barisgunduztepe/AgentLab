@@ -8,9 +8,7 @@ import { spawnSync } from "node:child_process";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const args = process.argv.slice(2);
 if (args.includes("--help")) {
-  console.log("Usage: npm run smoke:local [-- --check | --record]\nSet OPENAI_COMPATIBLE_BASE_URL and OPENAI_COMPATIBLE_MODEL for an already running loopback server with an installed model. Optional OPENAI_COMPATIBLE_API_KEY. --check only lists installed models; no generation. --record saves sanitized real responses under src/agent/providers/fixtures/local. No downloads and no user history writes.");
-} else if (args.some((arg) => !["--check", "--record"].includes(arg)) || (args.includes("--check") && args.includes("--record"))) {
-  console.error("Unknown smoke option. Use --help."); process.exitCode = 1;
+  console.log("Usage: npm run smoke:local [-- --check | [--scenario <document-chain-v1|document-conflict-v1|document-calculation-v1>] [--record]]\nSet OPENAI_COMPATIBLE_BASE_URL and OPENAI_COMPATIBLE_MODEL for an already running loopback server with an installed model. Optional OPENAI_COMPATIBLE_API_KEY. --check only lists installed models; no generation. --record saves sanitized real responses under src/agent/providers/fixtures/local. No downloads and no user history writes.");
 } else {
   // Compile the existing extensionless TS imports using the already installed TypeScript.
   // CommonJS resolves dependencies from the repository via NODE_PATH in this child only.

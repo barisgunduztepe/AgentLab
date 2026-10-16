@@ -402,6 +402,7 @@ export default function Home() {
           <div aria-live="polite" style={{ padding: 12, border: "1px solid #d7dce5", borderRadius: 6 }}>
             <p style={{ margin: "0 0 6px", fontWeight: 600 }}>{selectedScenario.title}</p>
             <p style={{ margin: "0 0 8px", color: "#536078" }}>{selectedScenario.description}</p>
+            <p style={{ margin: "0 0 8px" }}>Tools: {selectedScenario.tools.map((tool) => tool.label).join(", ")}</p>
             <p style={{ margin: 0 }}>{selectedScenario.task}</p>
           </div>
         ) : (

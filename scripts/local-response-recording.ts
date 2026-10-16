@@ -1,3 +1,15 @@
+import { DOCUMENT_CORPUS_VERSION } from "../src/tools/document-search-corpus";
+import { ARCHITECTURE_DEFINITIONS } from "../src/agent/architecture-definitions";
+import { getShortCommit } from "../src/experiments/run-metadata";
+
+export function recordingProvenance(model: string, capturedAt: string, scenarioId?: string) {
+  if (!scenarioId) return { source: "live-ollama-smoke", model, capturedAt, promptVersion: "bf220ed" };
+  const commit = getShortCommit();
+  return { source: "live-ollama-scenario-smoke", model, capturedAt, scenarioId, corpusVersion: DOCUMENT_CORPUS_VERSION,
+    configurationId: "baseline", configurationVersion: ARCHITECTURE_DEFINITIONS.baseline.version,
+    ...(commit ? { commit } : {}), promptVersion: "document-scenarios-v1" };
+}
+
 /** Allowlisted response snapshots only; never persist requests, headers or reasoning. */
 export function sanitizeLocalResponse(raw: unknown, secrets: readonly string[] = [], ordinal = 1) {
   const clean = (value: unknown): string => {

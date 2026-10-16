@@ -19,7 +19,7 @@ export class DocumentSearchTool implements Tool {
 
   validateInput(input: unknown): boolean {
     if (typeof input !== "object" || input === null || Object.getPrototypeOf(input) !== Object.prototype ||
-      Object.keys(input).length !== 1 || !Object.hasOwn(input, "query")) return false;
+      Object.keys(input).length !== 1 || Object.keys(input)[0] !== "query" || !Object.hasOwn(input, "query")) return false;
     const query = (input as Record<string, unknown>).query;
     if (typeof query !== "string" || query.length < 1 || query.length > 120 || /[\u0000-\u001f\u007f]/.test(query)) return false;
     const count = tokens(query.trim()).length;

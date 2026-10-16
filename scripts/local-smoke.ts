@@ -6,6 +6,34 @@ import { CalculatorTool } from "../src/tools/calculator-tool";
 import { runExperiment } from "../src/experiments/run-experiment";
 import type { ExperimentEvent } from "../src/experiments/types";
 import { sanitizeLocalResponse, type LocalResponseRecording } from "./local-response-recording";
+import { getScenarioById } from "../src/experiments/scenarios";
+import { createTools } from "../src/tools/tool-registry";
+import { createArchitectureRunner } from "../src/agent/architecture-registry";
+import { ARCHITECTURE_DEFINITIONS } from "../src/agent/architecture-definitions";
+import { DOCUMENT_CORPUS_VERSION } from "../src/tools/document-search-corpus";
+import { getShortCommit } from "../src/experiments/run-metadata";
+
+function documentScenario(id: string) {
+  if (!["document-chain-v1", "document-conflict-v1", "document-calculation-v1"].includes(id)) throw new Error("Unsupported smoke scenario.");
+  const scenario = getScenarioById(id);
+  if (!scenario?.evaluate) throw new Error("Missing smoke scenario.");
+  return scenario;
+}
+
+export function parseSmokeArguments(args: readonly string[]): { check: boolean; record: boolean; scenarioId?: string } {
+  let check = false;
+  let record = false;
+  let scenarioId: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--check" && !check) check = true;
+    else if (arg === "--record" && !record) record = true;
+    else if (arg === "--scenario" && scenarioId === undefined && args[index + 1]) scenarioId = documentScenario(args[++index]).id;
+    else throw new Error("Invalid smoke options.");
+  }
+  if (check && (record || scenarioId)) throw new Error("Check cannot generate or record.");
+  return { check, record, ...(scenarioId ? { scenarioId } : {}) };
+}
 
 export function requireLocalEndpoint(baseURL: string): void {
   const url = new URL(baseURL);
@@ -29,11 +57,13 @@ export async function probeLocalEndpoint(config: OpenAICompatibleConfiguration, 
 
 /** Executes only when called by the manual runner; importing this module never calls a model. */
 export async function runLocalSmoke(config: OpenAICompatibleConfiguration, transport: typeof fetch = fetch,
-  options: { timeoutMs?: number; cancellationDelayMs?: number; record?: (snapshot: LocalResponseRecording) => void } = {}) {
+  options: { timeoutMs?: number; cancellationDelayMs?: number; scenarioId?: string; record?: (snapshot: LocalResponseRecording) => void } = {}) {
   requireLocalEndpoint(config.baseURL);
   config = getOpenAICompatibleConfiguration({ OPENAI_COMPATIBLE_BASE_URL: config.baseURL,
     OPENAI_COMPATIBLE_MODEL: config.model, OPENAI_COMPATIBLE_API_KEY: config.apiKey });
-  const scenarios = [
+  const selected = options.scenarioId ? documentScenario(options.scenarioId) : undefined;
+  const commit = selected ? getShortCommit() : undefined;
+  const scenarios = selected ? [{ id: selected.id, task: selected.task }] : [
     { id: "text", task: "Explain in one short sentence what a thermostat does." },
     { id: "calculator-two-turns", task: "Use the calculator tool, one call per response. First call it only for 17 * 23 and wait for the tool result. After you receive that result, make a second, separate calculator call that adds 19 to it. Never make two calls in the same response and never compute anything yourself. After both tool results, report the final value." },
     { id: "cancellation", task: "Explain the history of navigation in several paragraphs." },
@@ -69,17 +99,23 @@ export async function runLocalSmoke(config: OpenAICompatibleConfiguration, trans
       ...(!config.apiKey ? { defaultHeaders: { Authorization: null } } : {}),
     });
     const provider = new RetryingModelProvider(new OpenAICompatibleModelProvider(config, client));
-    const tools = scenario.id === "calculator-two-turns" ? [new CalculatorTool()] : [];
+    const tools = selected ? createTools(selected.toolIds) : scenario.id === "calculator-two-turns" ? [new CalculatorTool()] : [];
+    const runner = selected ? createArchitectureRunner("baseline", { createProviderFor: () => provider, createTools: () => tools }) : new SingleAgent(provider, tools);
     try {
-      const experiment = await runExperiment(scenario.task, new SingleAgent(provider, tools), (event) => events.push(event), { signal: controller.signal });
+      const experiment = await runExperiment(scenario.task, runner, (event) => events.push(event), { signal: controller.signal });
+      const evaluation = selected?.evaluate?.(experiment, events);
       const modelEvents = events.filter((e) => e.type === "model.responded");
       const toolCount = events.filter((e) => e.type === "tool.completed").length;
-      const ok = scenario.id === "cancellation"
+      const ok = selected ? evaluation?.passed === true : scenario.id === "cancellation"
         ? experiment.failureCode === "cancelled" && dispatched > 0 && transportAborted && modelEvents.length === 1 && modelEvents[0].outcome === "error"
         : experiment.status === "completed" && !!experiment.output?.text.trim() && modelEvents.length > 0 && dispatched > 0 &&
           (scenario.id !== "calculator-two-turns" || (toolCount >= 2 && /\b410\b/.test(experiment.output?.text ?? "")));
       const last = modelEvents.at(-1);
       results.push({ scenario: scenario.id, ok, status: experiment.status,
+        ...(selected ? { scenarioId: selected.id, corpusVersion: DOCUMENT_CORPUS_VERSION,
+          configurationId: "baseline", configurationVersion: ARCHITECTURE_DEFINITIONS.baseline.version,
+          ...(commit ? { commit } : {}), evaluation, modelCount: modelEvents.length, toolCount,
+          toolNames: events.filter((event) => event.type === "tool.completed").map((event) => event.toolName) } : {}),
         ...(experiment.failureCode ? { failureCode: experiment.failureCode } : {}),
         durationMs: experiment.durationMs, finishReason: last?.finishReason ?? "unknown", usage: last?.usage ?? null,
         modelCalls: modelEvents.map((event) => ({ outcome: event.outcome, durationMs: event.durationMs, finishReason: event.finishReason, usage: event.usage })),

@@ -41,6 +41,10 @@ describe("fixed document search", () => {
   it.each(["a".repeat(120), " policy POLICY ", "a b c d e f g h", " route-amber "])("accepts boundary query %s", (query) => {
     expect(tool.validateInput({ query })).toBe(true);
   });
+  it("requires query to be the sole enumerable own key", () => {
+    const input = Object.defineProperty({ extra: true }, "query", { value: "policy" });
+    expect(tool.validateInput(input)).toBe(false);
+  });
   it.each([
     ["route-amber", ["route-amber", "route-amberly"]],
     ["sheet-k7", ["sheet-k7", "route-amber"]],
