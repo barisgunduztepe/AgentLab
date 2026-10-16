@@ -8,6 +8,8 @@ import { FakeModelProvider, type FakeResponse } from "./fake-model-provider";
 import { RetryingModelProvider } from "./retrying-model-provider";
 import type { CompleteRequest, ModelMessage, ModelProvider } from "../model-provider";
 import { CalculatorTool } from "../../tools/calculator-tool";
+import { createTools } from "../../tools/tool-registry";
+import { SingleAgent } from "../single-agent";
 
 const kinds = ["fake", "openai", "gemini", "openai-compatible"] as const;
 type Kind = (typeof kinds)[number];
@@ -82,6 +84,25 @@ function harness(kind: Kind, responses: FakeResponse[], wrapped: boolean, transf
 }
 
 for (const kind of kinds) for (const wrapped of [false, true]) describe(`${kind}${wrapped ? " + retry" : ""} shared contract`, () => {
+  it("translates both real tools and search-to-calculator continuation", async () => {
+    const tools = createTools(["document_search", "calculator"]);
+    const responses: FakeResponse[] = [
+      { type: "tool_call", call: { callId: "search", toolName: "document_search", arguments: { query: "rate-m4" } } },
+      { type: "tool_call", call: { callId: "calculate", toolName: "calculator", arguments: { expression: "7 * 23" } } },
+      text,
+    ];
+    const { provider, bodies } = harness(kind, responses, wrapped);
+    expect(await new SingleAgent(provider, tools).run("Search then calculate")).toEqual({ type: "text", text: "Done." });
+    if (kind !== "fake") {
+      expect(bodies).toHaveLength(3);
+      for (const body of bodies) expect(body.tools).toEqual(tools.map(({ definition }) => expect.objectContaining(kind === "openai-compatible"
+        ? { function: expect.objectContaining({ name: definition.name, parameters: definition.parameters }) }
+        : { name: definition.name, parameters: definition.parameters })));
+      const transcript = JSON.stringify(kind === "openai-compatible" ? bodies[2].messages : bodies[2].input);
+      expect(transcript).toContain("Cobalt unit rate");
+      expect(transcript).toContain("161");
+    }
+  });
   it("maps text and unknown usage without changing the request", async () => {
     const { provider } = harness(kind, [text], wrapped);
     const request = initial(); const original = structuredClone(request);

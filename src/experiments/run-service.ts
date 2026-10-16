@@ -2,7 +2,7 @@ import { ARCHITECTURE_DEFINITIONS, type RunConfigurationId } from "../agent/arch
 import { createArchitectureRunner } from "../agent/architecture-registry";
 import { createProviderContext } from "../agent/create-model-provider";
 import type { ModelProvider } from "../agent/model-provider";
-import { CalculatorTool } from "../tools/calculator-tool";
+import { createTools } from "../tools/tool-registry";
 import { type ExperimentHistoryStore, type ExperimentRunMetadata } from "./experiment-history";
 import { toExperimentHistoryRecord } from "./history-record";
 import { getShortCommit } from "./run-metadata";
@@ -38,7 +38,6 @@ export interface RunResult {
   experiment: Experiment; run: ExperimentRunMetadata; scenarioId?: string;
   evaluation?: EvaluationResult; events: ExperimentEvent[]; historySaved: boolean;
 }
-const toolFactories = { calculator: () => new CalculatorTool() };
 export function prepareRun(selection: RunSelection, options: {
   context?: RunContext; configurationId?: RunConfigurationId;
   providerFor?: (slot: string) => ModelProvider;
@@ -51,7 +50,7 @@ export function prepareRun(selection: RunSelection, options: {
   if (!entry.enabled || (scenario && !scenario.compatibleKinds.includes(entry.scenarioKind))) throw new RunRequestError("This scenario does not support this configuration.");
   const context = options.context ?? createRunContext();
   const runner = createArchitectureRunner(id, {
-    createTools: () => (scenario?.toolIds ?? ["calculator"]).map((name) => toolFactories[name]()),
+    createTools: () => createTools(scenario?.toolIds ?? ["calculator"]),
     createProviderFor(slot) {
       if (options.providerFor) return options.providerFor(slot);
       const responses = scenario?.fakeByKind[entry.scenarioKind]?.[slot];

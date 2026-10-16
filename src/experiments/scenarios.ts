@@ -1,4 +1,5 @@
 import type { FakeResponse } from "../agent/providers/fake-model-provider";
+import type { ToolId } from "../tools/tool-registry";
 import type { RunConfigurationId, ArchitectureKind } from "../agent/architecture-definitions";
 import { ARCHITECTURE_DEFINITIONS, COMPARISON_CONFIGURATION_IDS } from "../agent/architecture-definitions";
 import { evaluateDirectText, evaluateCalculatorOnce, evaluateCalculatorThreeSteps, evaluateUnknownTool } from "./scenario-evaluators";
@@ -11,7 +12,7 @@ export interface Scenario {
   task: string;
   defaultConfigurationId: RunConfigurationId;
   compatibleKinds: readonly ArchitectureKind[];
-  toolIds: readonly "calculator"[];
+  toolIds: readonly ToolId[];
   evaluate: ScenarioEvaluator | null;
   comparison: { enabled: boolean };
   fakeByKind: Readonly<Record<string, Readonly<Record<string, readonly FakeResponse[]>>>>;
