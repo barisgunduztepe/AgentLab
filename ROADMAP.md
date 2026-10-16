@@ -137,9 +137,13 @@ Kural: işi güvenilir biçimde yapabilecek en ekonomik model seçilir. Tasarım
 
 **Kanıt:** 443 otomatik test; fake UI'da beş senaryo, serbest metin/aritmetik ve dört kıyas; fake ve gerçek UI unmount'ta tek cancelled kayıt ve başlanmamış ikinci koşunun yokluğu. qwen3:8b smoke + uygulama direct-text tekil SSE, direct-text kıyas SSE ve calculator-once geçti. OpenAI/Gemini canlı doğrulanmış sayılmaz. Geliştirme Turbopack yeniden başlatmasında API 404 görüldü; canlı kabul webpack dev modunda tamamlandı. Son commit sonrası build sonucu görev raporunda belirtilir. Ayrıntı: [v0.9.1 doğrulama raporu](docs/v0.9.1-validation.md).
 
-### ⬜ v0.9.2 İkinci araç ve ayırt edici senaryolar
+### 🟡 v0.9.2 İkinci araç ve ayırt edici senaryolar
 
 **Amaç:** Mimarileri ayırabilen deneyler. Salt okunur ikinci araç (sabit belge setinde arama) ve mimariler arasında fark yaratması beklenen 2–3 daha zor senaryo (çok adımlı arama, kasıtlı çelişki içeren görev).
+
+**Durum (2026-10-16, laptop / Aşama A):** Sekiz sabit kurmaca belgede deterministik `document_search`, merkezi araç kaydı ve üç yeni single senaryo uygulandı; toplam 8 senaryo / 7 kıyas. Yeni senaryoların iki profilinde gerçek araç + fake model, tekil SSE / compare JSON-SSE / history v3 eşitliği, negatif RESULT ve iptal testleri mevcut. Katalogdaki araç adları UI'da gösterilir; manuel smoke'a opt-in `--scenario` ve yeni kayıt provenance'ı eklendi. Eski beş senaryo, custom calculator, prompt profilleri, version=1 ve toplam üç araç yürütme sınırı korundu.
+
+**Kanıt ve açık kapı:** 586 otomatik test; fake UI'da yeni üç tekil/kıyas, eski beş tekil/dört kıyas, custom metin/aritmetik, history detayı, Completed/FAIL ve sayfadan ayrılmada tek cancelled kayıt / başlamamış ikinci koşu doğrulandı. Laptopta `127.0.0.1:11434` bağlantısı reddedildi; kurulu model listesi alınamadı. İndirme/kurulum veya gerçek OpenAI/Gemini çağrısı yapılmadı. Aşama B'de eski smoke, gerçek qwen3 yeni senaryo kıyasları/tekil SSE/iptal ve gerçek karma yanıt fixture/replay bekleniyor. RESULT + lifecycle değerlendirmesi açıklama kalitesini veya tam retrieval provenance'ı ölçmez. Canlı kapı sağlanmadan ✅ verilmez. Ayrıntı ve build durumu: [v0.9.2 doğrulama raporu](docs/v0.9.2-validation.md).
 
 ### ⬜ v0.9.3 Üçüncü mimari ve çoklu karşılaştırma
 
