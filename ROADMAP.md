@@ -4,7 +4,7 @@ Bu belge, AgentLab'in mevcut durumunu ve onaylanmış geliştirme sırasını ka
 
 ## Mevcut checkpoint
 
-- v0.1–v0.7 tamamlandı (ayrıntı: [CHANGELOG.md](CHANGELOG.md)). **v0.8 Ölçülebilir çekirdek tamamlandı.** v0.8.4 ✅ yalnız OpenAI uyumlu adaptörün `qwen3:8b` ile canlı metin, iki turlu araç ve istemci HTTP iptali doğrulaması kapsamındadır; gerçek yanıt replay testleri eklendi. **v0.9.1 Tek koşu servisi ve mimari kaydı tamamlandı (fake UI + yerel qwen3 servis/HTTP doğrulaması). v0.9.2 İkinci araç ve ayırt edici senaryolar tamamlandı (yerel qwen3:8b canlı kabul örnekleri kapsamında; structured karma görevde ve smoke'ta RESULT biçim FAIL'i gözlendi). Sıradaki aşama v0.9.3a (tasarım: Second Brain `00-Gelen-Kutusu/docs/v0.9.3-tasarim.md`).** v0.8.0 yerel fake kayıt temizliği kullanıcı işi olarak açık kalır. Eski "v0.8 Automation" planı 2026-10-15 mimari incelemesiyle yeniden çerçevelendi; kontrollü tekrar v0.9.4'tedir.
+- v0.1–v0.7 tamamlandı (ayrıntı: [CHANGELOG.md](CHANGELOG.md)). **v0.8 Ölçülebilir çekirdek tamamlandı.** v0.8.4 ✅ yalnız OpenAI uyumlu adaptörün `qwen3:8b` ile canlı metin, iki turlu araç ve istemci HTTP iptali doğrulaması kapsamındadır; gerçek yanıt replay testleri eklendi. **v0.9.1 Tek koşu servisi ve mimari kaydı tamamlandı (fake UI + yerel qwen3 servis/HTTP doğrulaması). v0.9.2 İkinci araç ve ayırt edici senaryolar tamamlandı (yerel qwen3:8b canlı kabul örnekleri kapsamında; structured karma görevde ve smoke'ta RESULT biçim FAIL'i gözlendi). Sıradaki aşama v0.9.3b; v0.9.3a canlı kabulü sağlanmadı ve kabul edilmiş bulguyla 🟡 kalır (tasarım: Second Brain `00-Gelen-Kutusu/docs/v0.9.3-tasarim.md`).** v0.8.0 yerel fake kayıt temizliği kullanıcı işi olarak açık kalır. Eski "v0.8 Automation" planı 2026-10-15 mimari incelemesiyle yeniden çerçevelendi; kontrollü tekrar v0.9.4'tedir.
 - OpenAI Responses ve Gemini Interactions adaptörleri canlı doğrulanmadı; 🟡 kalır (Gemini tool-enabled isteklerinde önceki 503 geçmişi vardır). `llama3.1:8b` metin görevini geçti ancak tek çağrı/yanıt araç sözleşmesinde güvenilir değildir; ayrı ✅ verilmez. Önceki v0.8.1–v0.8.3 başlıkları kendi aşamalarındaki fake/mock doğrulama durumunu korur; v0.8.4 bunları tüm provider'larda canlı doğrulanmış saymaz.
 
 ## Yol haritası revizyonu (2026-10-15)
@@ -166,7 +166,9 @@ Kural: işi güvenilir biçimde yapabilecek en ekonomik model seçilir. Tasarım
 
 ### ⬜ v0.9.3b Handoff değerlendirmesi ve karşılaştırmaya katılım
 
-**Amaç:** Handoff mimarisinin ortak, deterministik bir evaluator ile karşılaştırmaya katılması. Eski handoff senaryosu/evaluator'ı değişmez; öneri, eski görevle aynı üç belge görevi için ayrı `multi-v1` varyantları ve bütün kollara aynı yeni evaluator sarmalayıcısıdır. **Başlamadan önce kullanıcı onayı gerekir:** K3 (handoff evaluator çatışması) ve K6 (analyst araçlı, finalizer araçsız, toplam üç araç). v0.9.3a ✅ olmadan başlamaz.
+**Amaç:** Handoff mimarisinin ortak, deterministik bir evaluator ile karşılaştırmaya katılması. Eski handoff senaryosu/evaluator'ı değişmez; aynı üç belge görevi için ayrı `multi-v1` varyantları ve bütün kollara yapılandırma bağlamını bilen aynı yeni evaluator sarmalayıcısı kullanılır. K3/K6/K8 ve V2 izolasyonu kullanıcı tarafından onaylandı (2026-10-17). Yeni handoff'ta analyst araçlı (en fazla üç yürütme/dört model çağrısı), finalizer araçsız (tek model çağrısı); not sınırı 8192 UTF-8 bayttır.
+
+**Önkoşul:** v0.9.3a A/B kanıtı incelendi; K9 başarısızlığı kabul edildi, a 🟡 kalır. K3/K6/K8 onayıyla b başlar. b'nin canlı kapısı bağımsızdır: üç yeni varyantın her birinde gerçek handoff PASS ve en az bir baseline/structured kontrol PASS; gerçek rol akışı, en fazla üç araç, protokol/history eşliği, finalizer sırasında iptal/başlamayan sonraki koşu ve açık gerçek fixture/replay gerekir. Critic `invalid_report` sonuçları korunur; b için yeniden üç geçerli audit şartı yoktur. Canlı doğrulama olmadan b ✅ olmaz.
 
 ### ⬜ v0.9.4 Kontrollü tekrar
 

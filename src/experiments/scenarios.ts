@@ -5,7 +5,8 @@ import type { RunConfigurationId, ArchitectureKind } from "../agent/architecture
 import { ARCHITECTURE_DEFINITIONS, COMPARISON_CONFIGURATION_IDS, AVAILABLE_COMPARISON_CONFIGURATION_IDS } from "../agent/architecture-definitions";
 import { evaluateDirectText, evaluateCalculatorOnce, evaluateCalculatorThreeSteps, evaluateUnknownTool } from "./scenario-evaluators";
 import type { Experiment, ExperimentEvent, EvaluationResult } from "./types";
-export type ScenarioEvaluator = (experiment: Experiment, events: readonly ExperimentEvent[]) => EvaluationResult;
+export type EvaluationContext = Readonly<{ configurationId: RunConfigurationId | "handoff-documents-v1" }>;
+export type ScenarioEvaluator = (experiment: Experiment, events: readonly ExperimentEvent[], context?: EvaluationContext) => EvaluationResult;
 export interface Scenario {
   id: string;
   title: string;

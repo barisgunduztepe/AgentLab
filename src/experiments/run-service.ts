@@ -98,7 +98,7 @@ export function createRunService(history: Pick<ExperimentHistoryStore, "append">
       const experiment = await runExperiment(plan.task, plan.runner, publish, { signal: controller.signal });
       let evaluation: EvaluationResult | undefined;
       if (plan.evaluate && plan.scenarioId) {
-        try { evaluation = plan.evaluate(structuredClone(experiment), structuredClone(events)); }
+        try { evaluation = plan.evaluate(structuredClone(experiment), structuredClone(events), { configurationId: plan.configurationId }); }
         catch { evaluation = { passed: false, reason: "Scenario evaluation could not be completed." }; }
         if (experiment.failureCode === "cancelled") evaluation = { ...evaluation, passed: false };
         publish({ experimentId: experiment.id, occurredAt: new Date().toISOString(), type: "scenario.evaluated", scenarioId: plan.scenarioId, evaluation });
