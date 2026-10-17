@@ -157,11 +157,44 @@ The live report disappears on reload; history details state that it was not stor
 do not gain raw prompts, tool evidence or audit text. An aborted browser cannot infer the final server
 outcome; check history after stopping or disconnecting.
 
-The manual local runner now accepts `--configuration baseline|structured|single-critic-audit-v1`
+The manual local runner accepts `--configuration baseline|structured|single-critic-audit-v1`
 alongside an explicit document `--scenario`. Defaults stay unchanged; Critic recordings identify
-producer/Critic slots. This support was tested with synthetic HTTP only in Stage A; no local model
-probe or generation was performed. **Stage B is waiting for K9**, the user's invalid-report policy.
-See [v0.9.3a validation](docs/v0.9.3a-validation.md) for offline evidence and the parser regression fixed in C4.
+producer/Critic slots. Stage A used synthetic HTTP. Stage B subsequently ran on local qwen3:8b:
+the three-scenario acceptance gate was not met, including an `invalid_report` failure under the
+approved fail-fast K9 policy. v0.9.3a remains 🟡. See
+[v0.9.3a validation](docs/v0.9.3a-validation.md) for all results and the parser regression fixed in C4.
+
+## Evaluated document handoff (v0.9.3b)
+
+Three new V2-only scenarios, `document-chain-multi-v1`, `document-conflict-multi-v1` and
+`document-calculation-multi-v1`, preserve the original document tasks and tools. They support
+baseline, structured, single-critic-audit-v1 and the new `handoff-documents-v1`. Request the V2
+catalog and explicit comparison or single-run version to use them; legacy requests for these new
+IDs return 400 before execution. The original eight scenarios and thermostat handoff keep their
+contracts. The V2 catalog now contains eleven scenarios.
+
+The new handoff gives only Analyst the document_search/calculator tools, with at most three tool
+executions and four model calls. An independent, tool-free Finalizer makes one model call using
+the task and Analyst notes. Empty notes or notes over 8192 UTF-8 bytes fail as invalid_handoff;
+notes are not truncated or repaired. Finalizer tool requests fail as tool_unavailable. The original
+handoff-default still gives tools to both roles. These are logical call limits, not token or cost limits.
+
+All four configurations use the same new evaluator wrapper. It receives the selected configuration
+from the server plan, validates the complete raw lifecycle/model/tool trace, then passes an evaluation-only
+projection to the unchanged RESULT evaluator. Invalid roles or missing events cannot be hidden by
+projection. Raw history events are preserved in schema v3; Analyst notes remain in existing lifecycle
+output fields. Critic verdicts are still transient and never override deterministic evaluation.
+
+Live qwen3:8b handoff passed all three new scenarios, with matching SSE/history events and real
+Finalizer-phase HTTP cancellation leaving no next-run record. The initial chain baseline and structured
+controls both failed, so the independent v0.9.3b acceptance gate was **not met: 🟡**. A real valid
+`no_issue` audit also accompanied a RESULT-format FAIL; its transport replay preserves that result.
+The separate JSON control does not replace the initial matrix. Real handoff response replay verifies
+notes/final-output bytes and JSON/SSE behavior. See [v0.9.3b validation](docs/v0.9.3b-validation.md).
+
+The manual runner additionally accepts the three `multi-v1` IDs and `--configuration handoff-documents-v1`;
+recordings identify Analyst/Finalizer slots. Existing defaults stay unchanged. Controlled repetition and
+persistent Critic verdicts require the separate v0.9.4/K2 design decision.
 
 ## Manual local smoke (v0.8.4)
 
