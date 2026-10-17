@@ -36,7 +36,8 @@ Kural: işi güvenilir biçimde yapabilecek en ekonomik model seçilir. Tasarım
 | v0.8.4 İlk gerçek provider | 🌙 Sonnet | 🌙 Sonnet | Kurulum, adaptör ve smoke betiği. Yerel model davranışı beklenmedik çıkarsa ☀️ Opus. |
 | v0.9.1 Koşu servisi ve mimari kaydı | ☀️ Opus | 🌙 Sonnet | Orkestrasyon ve senaryo tanımının yeniden tasarımı. |
 | v0.9.2 İkinci araç ve zor senaryolar | ☀️ Opus | 🌙 Sonnet | Mimarileri gerçekten ayıran senaryo ve evaluator tasarımı. |
-| v0.9.3 Üçüncü mimari | 🌙 Sonnet | 🌙 Sonnet | Kayıt hazırsa ekleme işidir. |
+| v0.9.3a Dar Critic ve çoklu karşılaştırma | ☀️ Opus (Codex Astra) | 🌙 Sonnet (Codex Sol) | Registry hazır; fakat evaluator/history/transport sınırları tasarım incelemesi gerektirir. Onaylı küçük commit'lerle uygula; şema veya deney sözleşmesi sorunu çıkarsa tasarım incelemesine dön. |
+| v0.9.3b Handoff değerlendirmesi | ☀️ Opus (Codex Astra) | 🌙 Sonnet (Codex Sol) | Evaluator sarmalayıcısı ve yeni varyantlar; K3/K6 onayı gerekir. |
 | v0.9.4 Kontrollü tekrar | ☀️ Opus | 🌙 Sonnet | Bütçe sınırı, durdurma ve istatistik gösterimi tasarımı. |
 | v1.0.1 Paylaşılabilir sürüm | — | 🌙 Sonnet | UI bölme, dışa aktarma, belge ve diyagram. |
 
@@ -137,21 +138,35 @@ Kural: işi güvenilir biçimde yapabilecek en ekonomik model seçilir. Tasarım
 
 **Kanıt:** 443 otomatik test; fake UI'da beş senaryo, serbest metin/aritmetik ve dört kıyas; fake ve gerçek UI unmount'ta tek cancelled kayıt ve başlanmamış ikinci koşunun yokluğu. qwen3:8b smoke + uygulama direct-text tekil SSE, direct-text kıyas SSE ve calculator-once geçti. OpenAI/Gemini canlı doğrulanmış sayılmaz. Geliştirme Turbopack yeniden başlatmasında API 404 görüldü; canlı kabul webpack dev modunda tamamlandı. Son commit sonrası build sonucu görev raporunda belirtilir. Ayrıntı: [v0.9.1 doğrulama raporu](docs/v0.9.1-validation.md).
 
-### 🟡 v0.9.2 İkinci araç ve ayırt edici senaryolar
+### ✅ v0.9.2 İkinci araç ve ayırt edici senaryolar
 
 **Amaç:** Mimarileri ayırabilen deneyler. Salt okunur ikinci araç (sabit belge setinde arama) ve mimariler arasında fark yaratması beklenen 2–3 daha zor senaryo (çok adımlı arama, kasıtlı çelişki içeren görev).
 
 **Durum (2026-10-16, laptop / Aşama A):** Sekiz sabit kurmaca belgede deterministik `document_search`, merkezi araç kaydı ve üç yeni single senaryo uygulandı; toplam 8 senaryo / 7 kıyas. Yeni senaryoların iki profilinde gerçek araç + fake model, tekil SSE / compare JSON-SSE / history v3 eşitliği, negatif RESULT ve iptal testleri mevcut. Katalogdaki araç adları UI'da gösterilir; manuel smoke'a opt-in `--scenario` ve yeni kayıt provenance'ı eklendi. Eski beş senaryo, custom calculator, prompt profilleri, version=1 ve toplam üç araç yürütme sınırı korundu.
 
-**Kanıt ve açık kapı:** 586 otomatik test; fake UI'da yeni üç tekil/kıyas, eski beş tekil/dört kıyas, custom metin/aritmetik, history detayı, Completed/FAIL ve sayfadan ayrılmada tek cancelled kayıt / başlamamış ikinci koşu doğrulandı. Laptopta `127.0.0.1:11434` bağlantısı reddedildi; kurulu model listesi alınamadı. İndirme/kurulum veya gerçek OpenAI/Gemini çağrısı yapılmadı. Aşama B'de eski smoke, gerçek qwen3 yeni senaryo kıyasları/tekil SSE/iptal ve gerçek karma yanıt fixture/replay bekleniyor. RESULT + lifecycle değerlendirmesi açıklama kalitesini veya tam retrieval provenance'ı ölçmez. Canlı kapı sağlanmadan ✅ verilmez. Ayrıntı ve build durumu: [v0.9.2 doğrulama raporu](docs/v0.9.2-validation.md).
+**Aşama A kanıtı ve o gün açık kapı:** 586 otomatik test; fake UI'da yeni üç tekil/kıyas, eski beş tekil/dört kıyas, custom metin/aritmetik, history detayı, Completed/FAIL ve sayfadan ayrılmada tek cancelled kayıt / başlamamış ikinci koşu doğrulandı. Laptopta `127.0.0.1:11434` bağlantısı reddedildi; kurulu model listesi alınamadı. İndirme/kurulum veya gerçek OpenAI/Gemini çağrısı yapılmadı. Aşama B'de eski smoke, gerçek qwen3 yeni senaryo kıyasları/tekil SSE/iptal ve gerçek karma yanıt fixture/replay bekleniyordu. RESULT + lifecycle değerlendirmesi açıklama kalitesini veya tam retrieval provenance'ı ölçmez. Ayrıntı ve build durumu: [v0.9.2 doğrulama raporu](docs/v0.9.2-validation.md).
 
-### ⬜ v0.9.3 Üçüncü mimari ve çoklu karşılaştırma
+**Aşama B duraklatma anı (2026-10-17, masaüstü):** Ollama 0.40.4 / kurulu qwen3:8b doğrulandı; smoke ön kontrolü geçti. Eski smoke metni ve ayrı karma smoke ilk yanıtı beklerken mevcut 120 saniye deadline'ında cancelled oldu; tamamlanmış yanıt/fixture yoktu. Kullanıcı Flux 3 denemesini bildirince canlı doğrulama duraklatıldı; normal zincir kıyası baseline aşamasında iptal edildi. Bu başarısız/iptal denemeler raporda korunur.
 
-**Amaç:** Tek agent + Critic mimarisi; handoff karşılaştırmaya katılır; karşılaştırma ikiden fazla mimariyi destekler. Kazanan seçilmez.
+**Aşama B kapanış (2026-10-17, kullanıcı devamı sonrası):** Eski smoke'un üç adımı geçti. Üç yeni gerçek qwen3 kıyasında zincir/çelişki iki profilde PASS; karma baseline PASS, structured format FAIL. Karma tekil SSE PASS; üç gerçek araç adımı, altı kıyas ve tekil SSE için birebir event–history eşitliği, aynı çiftte provider/model/commit/version/araç eşitliği, history UI ve bağımsız gerçek unmount iptali doğrulandı. Her yeni senaryoda en az bir profil PASS kapısı sağlandı. Karma smoke da doğru üç araç/161 sonucuna rağmen format FAIL verdi; gerçek fixture/replay `fb68564` bu başarısızlığı korur. 588 otomatik test geçti. **✅ yalnız bu yerel qwen3 kabul örnekleri kapsamındadır**; format güvenilirliği veya mimari üstünlük iddiası yoktur. İlk hedefli Vitest'te dotenv engeli eksikti; sonraki tam paket envDir:false ile çalıştı; ayrıntı ve son build durumu raporda. Prompt/evaluator/bütçe değişmedi. Bu ROADMAP değişikliği commit edilmez; v0.9.3a/b taslakları korunur.
+
+### ⬜ v0.9.3a Dar Critic ve çoklu karşılaştırma
+
+**Amaç:** Tek agent + dar sonuç denetleyen Critic (audit-only); runtime mentor ve otomatik revizyon bu deneyde yoktur. Görev, corpus, araçlar, üretici model ve deterministik başarı ölçütleri korunur; Critic verdict'i başarı kanıtı sayılmaz. Critic modeli, ek çağrı bütçesi ve bilinen/bilinmeyen kullanım açık gösterilir (ilk sürümde Critic de `qwen3:8b`; üretici ≤4 + Critic ≤1 model çağrısı, toplam üç araç). Opt-in çoklu karşılaştırma ikiden fazla yapılandırmayı destekler (ilk sürümde en çok üç: baseline, structured, Critic); eski iki-profil JSON/SSE yolu korunur. Kazanan seçilmez. Kalıcı hafıza, bilgi grafı, PentAGI/Docker/terminal araçları ve ek izleme servisleri kapsam dışıdır.
+
+**Önkoşul:** v0.9.2 canlı kapısı (Aşama B) ✅ olmadan uygulama başlamaz. Tasarım ve onaylı kararlar: Second Brain `00-Gelen-Kutusu/docs/v0.9.3-tasarim.md` (K1, K2, K4, K5, K7 onaylandı, 2026-10-16).
+
+**Bilinen sınır (K2, onaylı):** History şeması v3 sabit kalır; Critic verdict'i kalıcı saklanmaz, yalnız canlı rapor ve kabul belgesinde görünür. v0.9.4'ten (N tekrar, başarı oranı) önce verdict'in kalıcılığı için ayrı, küçük bir history şema kararı alınmalıdır.
+
+**Açık karar (K9):** Critic'in sınırlı JSON raporu küçük yerel modelde sık bozulursa (`invalid_report`) ne yapılacağı canlı kabulden önce yazılmalıdır; prompt/evaluator habersiz değiştirilmez, sonuç 🟡 ve raporlanır.
+
+### ⬜ v0.9.3b Handoff değerlendirmesi ve karşılaştırmaya katılım
+
+**Amaç:** Handoff mimarisinin ortak, deterministik bir evaluator ile karşılaştırmaya katılması. Eski handoff senaryosu/evaluator'ı değişmez; öneri, eski görevle aynı üç belge görevi için ayrı `multi-v1` varyantları ve bütün kollara aynı yeni evaluator sarmalayıcısıdır. **Başlamadan önce kullanıcı onayı gerekir:** K3 (handoff evaluator çatışması) ve K6 (analyst araçlı, finalizer araçsız, toplam üç araç). v0.9.3a ✅ olmadan başlamaz.
 
 ### ⬜ v0.9.4 Kontrollü tekrar
 
-**Amaç:** Gerçek modellerin değişkenliğini ölçmek. N tekrarlı koşu, bütçe/koşu üst sınırı, açık durdurma, başarı oranı, medyan süre ve yayılım. Her koşu ayrı kaydedilir. JSON history'nin yavaşladığı ölçülürse SQLite değerlendirilir. (Eski v0.8.1 hedefi.)
+**Amaç:** Gerçek modellerin değişkenliğini ölçmek. N tekrarlı koşu, bütçe/koşu üst sınırı, açık durdurma, başarı oranı, medyan süre ve yayılım. Her koşu ayrı kaydedilir. JSON history'nin yavaşladığı ölçülürse SQLite değerlendirilir. (Eski v0.8.1 hedefi.) Model turu, araç yürütme girişimi/başarısı ve toplam tekrar grubu bütçesi ayrı tanımlanır. Ek denetim maliyeti, bilinen usage ve bilinmeyen kısım ayrı raporlanır. Bütçe eşlemeli deney yapılırsa yeni yapılandırma olarak adlandırılır; baseline limiti değiştirilmez. Koşu sırası ve warm-up etkileri kayıt altına alınır. **Önkoşul:** Critic verdict'inin kalıcılığı için history şema kararı (bkz. v0.9.3a, K2).
 
 ## v1.0 — Usable AgentLab
 
@@ -162,6 +177,15 @@ Kural: işi güvenilir biçimde yapabilecek en ekonomik model seçilir. Tasarım
 ## Bilerek sonraya bırakılanlar
 
 LLM-as-judge (ancak deterministik değerlendirme yetmezse), bulut veritabanı, kullanıcı hesabı ve swarm. SQLite ve MCP araç desteği değerlendirme listesindedir.
+
+Ayrı hipotezler (uygulama taahhüdü veya sıra değişimi değildir; PentAGI incelemesinden, 2026-10-16):
+
+- **Koşullu runtime mentor:** aynı araç adının tekrarı tek başına başarısız döngü değildir. Müdahale tetikleyicisi, yanlış alarmı, bütçesi ve katkısı ayrı deneyle ölçülür.
+- **Araç-hatasından toparlanma:** mevcut fail-fast kontrol grubuna karşı, önceden sınırlı onarım sayısı olan ayrı yapılandırma; hata kodları ve ek çağrı maliyeti korunarak ölçülür.
+- **Kalıcı rol/parent-child izleme ve denetim raporu:** içerik minimizasyonlu yeni gözlem sözleşmesi; history şema kararı ayrıca alınır. Harici izleme servisi gerektirdiği varsayılmaz.
+- **Critic geri bildirimi sonrası tek revizyon ve bütçe eşlemeli öz-denetim:** audit-only'den ayrı hipotez; kalite farkı ek çağrı/model bütçesinden ayrıştırılır.
+
+Kalıcı hafıza, bilgi grafı, PentAGI araçları, Docker/terminal araçları ve ek izleme servisleri için bu inceleme nedeniyle yeni milestone açılmaz.
 
 ## Development Principles
 
@@ -180,6 +204,8 @@ Ek ilkeler:
 - Her milestone mümkün olduğunca tek ana kavram öğretsin.
 - Milestone'lar küçük, test edilebilir ve geri alınabilir olsun.
 - Canlı doğrulama yapılmadan milestone ✅ olarak işaretlenmez; yapılamıyorsa "yalnız fake ile doğrulandı" diye açıkça belirtilir (2026-10-15).
+- Karşılaştırmada değişen değişken, model/araç/koşu bütçesi ve ölçüm sınırı önceden açıklanır; bilinmeyen kullanım sıfır sayılmaz (2026-10-16).
+- Araç hatasını modele geri verme, runtime mentor ve sonuç denetimi farklı deney değişkenleridir; kontrol grubunun hata semantiği ve evaluator'ı sessizce değiştirilmez (2026-10-16).
 - Gizli chain-of-thought gözlemlenmeye veya saklanmaya çalışılmasın.
 - Tool input/output verileri varsayılan olarak event log'a yazılmasın.
 - Güvenlik gereksinimleri ilgili capability eklendiğinde ele alınsın.
