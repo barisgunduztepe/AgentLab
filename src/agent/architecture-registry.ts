@@ -5,6 +5,7 @@ import { SingleAgent, structuredPrompt } from "./single-agent";
 import { TwoAgentHandoffRunner } from "./two-agent-handoff-runner";
 import type { Tool } from "../tools/tool";
 import { SingleAgentCriticRunner } from "./single-agent-critic-runner";
+import { HandoffDocumentsRunner } from "./handoff-documents-runner";
 import type { AuditObserver } from "./critic-report";
 
 export type RunnerContext = { createProviderFor(slot: string): ModelProvider; createTools(): readonly Tool[]; onAudit?: AuditObserver };
@@ -15,6 +16,7 @@ const factories: Record<RunConfigurationId, (context: RunnerContext) => Experime
     new SingleAgent(ctx.createProviderFor("analyst"), ctx.createTools()),
     new SingleAgent(ctx.createProviderFor("finalizer"), ctx.createTools())),
   "single-critic-audit-v1": (ctx) => new SingleAgentCriticRunner(ctx.createProviderFor("producer"), ctx.createProviderFor("critic"), ctx.createTools(), ctx.onAudit),
+  "handoff-documents-v1": (ctx) => new HandoffDocumentsRunner(ctx.createProviderFor("analyst"), ctx.createProviderFor("finalizer"), ctx.createTools()),
 };
 export function createArchitectureRunner(id: RunConfigurationId, context: RunnerContext): ExperimentRunner {
   if (!ARCHITECTURE_DEFINITIONS[id].enabled) throw new Error("Architecture is not enabled.");

@@ -13,7 +13,7 @@ afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 const configurationId = "single-critic-audit-v1";
 const signal = () => new AbortController().signal;
 
-it.each(SCENARIOS.slice(5))("$id: integrates independent slots, audit-only output and history v3", async (scenario) => {
+it.each(SCENARIOS.slice(5, 8))("$id: integrates independent slots, audit-only output and history v3", async (scenario) => {
   const directory = await mkdtemp(join(tmpdir(), "agentlab-audit-"));
   try {
     const store = new ExperimentHistoryStore(join(directory, "history.json"));

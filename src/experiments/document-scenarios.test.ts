@@ -22,7 +22,7 @@ afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 describe("document scenarios", () => {
   it("preserves old tasks, plans and configuration versions and validates every catalog relationship", () => {
     expect(createHash("sha256").update(JSON.stringify(SCENARIOS.slice(0, 5))).digest("hex")).toMatchInlineSnapshot(`"4237235d927548dec449c27bdc8ca2ba6f21248902693223a90aa3355e406aec"`);
-    expect(SCENARIOS).toHaveLength(8);
+    expect(SCENARIOS).toHaveLength(11);
     expect(SCENARIOS.filter((scenario) => comparisonConfigurations(scenario).length === 2)).toHaveLength(7);
     for (const scenario of SCENARIOS) {
       expect(new Set(scenario.toolIds).size).toBe(scenario.toolIds.length);

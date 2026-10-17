@@ -1,11 +1,12 @@
 import type { FakeResponse } from "../agent/providers/fake-model-provider";
 import type { ToolId } from "../tools/tool-registry";
 import { evaluateDocumentChain, evaluateDocumentConflict, evaluateDocumentCalculation } from "./document-scenario-evaluators";
-import type { RunConfigurationId, ArchitectureKind } from "../agent/architecture-definitions";
+import type { RunConfigurationId, ScenarioKind } from "../agent/architecture-definitions";
+import { evaluateMultiDocumentChain, evaluateMultiDocumentConflict, evaluateMultiDocumentCalculation } from "./multi-document-scenario-evaluators";
 import { ARCHITECTURE_DEFINITIONS, COMPARISON_CONFIGURATION_IDS, AVAILABLE_COMPARISON_CONFIGURATION_IDS } from "../agent/architecture-definitions";
 import { evaluateDirectText, evaluateCalculatorOnce, evaluateCalculatorThreeSteps, evaluateUnknownTool } from "./scenario-evaluators";
 import type { Experiment, ExperimentEvent, EvaluationResult } from "./types";
-export type EvaluationContext = Readonly<{ configurationId: RunConfigurationId | "handoff-documents-v1" }>;
+export type EvaluationContext = Readonly<{ configurationId: RunConfigurationId }>;
 export type ScenarioEvaluator = (experiment: Experiment, events: readonly ExperimentEvent[], context?: EvaluationContext) => EvaluationResult;
 export interface Scenario {
   id: string;
@@ -13,7 +14,8 @@ export interface Scenario {
   description: string;
   task: string;
   defaultConfigurationId: RunConfigurationId;
-  compatibleKinds: readonly ArchitectureKind[];
+  compatibleKinds: readonly ScenarioKind[];
+  minimumTransportVersion?: 2;
   toolIds: readonly ToolId[];
   evaluate: ScenarioEvaluator | null;
   comparison: { enabled: boolean };
@@ -28,7 +30,7 @@ const documentFakePlans = (primary: readonly FakeResponse[]) => ({
   "single-critic": { producer: primary, critic: [{ type: "text", text: '{"verdict":"no_issue","issues":[]}' }] as readonly FakeResponse[] },
 });
 
-export const SCENARIOS = [
+const LEGACY_SCENARIOS = [
   {
     id: "direct-text",
     title: "Direct text response",
@@ -140,11 +142,23 @@ export const SCENARIOS = [
   },
 ] as const satisfies readonly Scenario[];
 
+const multiEvaluators = [evaluateMultiDocumentChain, evaluateMultiDocumentConflict, evaluateMultiDocumentCalculation];
+export const SCENARIOS = [...LEGACY_SCENARIOS, ...LEGACY_SCENARIOS.slice(5, 8).map((base, index): Scenario => {
+  const original = base as Scenario;
+  const primary = original.fakeByKind.single.primary;
+  return { ...original, id: original.id.replace(/-v1$/, "-multi-v1"), title: `${original.title} (multi-v1)`,
+    minimumTransportVersion: 2, compatibleKinds: ["single", "single-critic", "handoff-documents"], evaluate: multiEvaluators[index],
+    fakeByKind: { ...original.fakeByKind, "handoff-documents": {
+      analyst: primary, finalizer: [primary.at(-1)!],
+    } } };
+})] as const;
+
 export function getScenarioById(id: string): Scenario | undefined {
   return SCENARIOS.find((scenario) => scenario.id === id);
 }
 
 export function comparisonConfigurations(scenario: Scenario, version: 1 | 2 = 1): RunConfigurationId[] {
+  if ((scenario.minimumTransportVersion ?? 1) > version) return [];
   const ids = version === 1 ? COMPARISON_CONFIGURATION_IDS : AVAILABLE_COMPARISON_CONFIGURATION_IDS;
   return scenario.comparison.enabled ? ids.filter((id) => scenario.compatibleKinds.includes(ARCHITECTURE_DEFINITIONS[id].scenarioKind)) : [];
 }

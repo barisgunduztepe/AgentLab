@@ -15,7 +15,7 @@ import { DOCUMENT_CORPUS_VERSION } from "../src/tools/document-search-corpus";
 import { getShortCommit } from "../src/experiments/run-metadata";
 
 function documentScenario(id: string) {
-  if (!["document-chain-v1", "document-conflict-v1", "document-calculation-v1"].includes(id)) throw new Error("Unsupported smoke scenario.");
+  if (!["document-chain-v1", "document-conflict-v1", "document-calculation-v1", "document-chain-multi-v1", "document-conflict-multi-v1", "document-calculation-multi-v1"].includes(id)) throw new Error("Unsupported smoke scenario.");
   const scenario = getScenarioById(id);
   if (!scenario?.evaluate) throw new Error("Missing smoke scenario.");
   return scenario;
@@ -96,7 +96,7 @@ export async function runLocalSmoke(config: OpenAICompatibleConfiguration, trans
       const response = await pending;
       if (options.record && response.ok) {
         const snapshot = sanitizeLocalResponse(await response.clone().json(), [config.baseURL, config.apiKey ?? ""], dispatched);
-        options.record({ scenario: scenario.id, response: snapshot, ...(configurationId === "single-critic-audit-v1" ? { slot } : {}) });
+        options.record({ scenario: scenario.id, response: snapshot, ...(["single-critic-audit-v1", "handoff-documents-v1"].includes(configurationId) ? { slot } : {}) });
       }
       return response;
     };
@@ -112,7 +112,7 @@ export async function runLocalSmoke(config: OpenAICompatibleConfiguration, trans
     const runner = selected ? createArchitectureRunner(configurationId, { createProviderFor: createProvider, createTools: () => tools, onAudit: (p) => { audit = p; } }) : new SingleAgent(createProvider("primary"), tools);
     try {
       const experiment = await runExperiment(scenario.task, runner, (event) => events.push(event), { signal: controller.signal });
-      const evaluation = selected?.evaluate?.(experiment, events);
+      const evaluation = selected?.evaluate?.(experiment, events, { configurationId });
       const modelEvents = events.filter((e) => e.type === "model.responded");
       const toolCount = events.filter((e) => e.type === "tool.completed").length;
       const ok = selected ? evaluation?.passed === true : scenario.id === "cancellation"

@@ -15,6 +15,7 @@ export function createExperimentPostHandler(history: Pick<ExperimentHistoryStore
       const payload = body as Record<string, unknown>;
       const version = payload.runVersion;
       if (version !== undefined && version !== 2) throw new RunRequestError("Unsupported runVersion.");
+      if (selection.scenarioId && (getScenarioById(selection.scenarioId)?.minimumTransportVersion ?? 1) > (version === 2 ? 2 : 1)) throw new RunRequestError("This scenario requires runVersion:2.");
       if (version !== 2 && "configurationId" in payload) throw new RunRequestError("Configuration selection requires runVersion:2.");
       if (version === 2) {
         const scenario = selection.scenarioId ? getScenarioById(selection.scenarioId) : undefined;

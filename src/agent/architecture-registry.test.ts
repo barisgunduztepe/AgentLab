@@ -7,9 +7,9 @@ import { STRUCTURED_AGENT_INSTRUCTION } from "./single-agent";
 afterEach(() => vi.unstubAllEnvs());
 describe("architecture registry", () => {
   it("preserves identities, versions and the two comparison profiles", () => {
-    expect(CONFIGURATION_IDS).toEqual(["baseline", "structured", "handoff-default", "single-critic-audit-v1"]);
+    expect(CONFIGURATION_IDS).toEqual(["baseline", "structured", "handoff-default", "single-critic-audit-v1", "handoff-documents-v1"]);
     expect(COMPARISON_CONFIGURATION_IDS).toEqual(["baseline", "structured"]);
-    expect(CONFIGURATION_IDS.map((id) => ARCHITECTURE_DEFINITIONS[id].version)).toEqual([1, 1, 1, 1]);
+    expect(CONFIGURATION_IDS.map((id) => ARCHITECTURE_DEFINITIONS[id].version)).toEqual([1, 1, 1, 1, 1]);
     expect(isRunConfigurationId("toString")).toBe(false);
   });
   it("runs each profile with independent providers and exact prompt wording", async () => {
