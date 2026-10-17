@@ -1,0 +1,135 @@
+{
+  "source": "live-ollama-scenario-smoke",
+  "model": "qwen3:8b",
+  "capturedAt": "2026-10-17T11:53:27.662Z",
+  "scenarioId": "document-calculation-v1",
+  "corpusVersion": "agentlab-docs-v1",
+  "configurationId": "baseline",
+  "configurationVersion": 1,
+  "commit": "4444a83",
+  "promptVersion": "document-scenarios-v1",
+  "responses": [
+    {
+      "scenario": "document-calculation-v1",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "recorded-call-1-1",
+                  "type": "function",
+                  "function": {
+                    "name": "document_search",
+                    "arguments": "{\"query\":\"order-cobalt\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 460,
+          "completion_tokens": 134,
+          "total_tokens": 594
+        }
+      }
+    },
+    {
+      "scenario": "document-calculation-v1",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "recorded-call-2-1",
+                  "type": "function",
+                  "function": {
+                    "name": "document_search",
+                    "arguments": "{\"query\":\"rate-m4\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 554,
+          "completion_tokens": 235,
+          "total_tokens": 789
+        }
+      }
+    },
+    {
+      "scenario": "document-calculation-v1",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "recorded-call-3-1",
+                  "type": "function",
+                  "function": {
+                    "name": "calculator",
+                    "arguments": "{\"expression\":\"7 * 23\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 689,
+          "completion_tokens": 429,
+          "total_tokens": 1118
+        }
+      }
+    },
+    {
+      "scenario": "document-calculation-v1",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "RESULT\ntotal_credits=161; sources=order-cobalt,rate-m4"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 727,
+          "completion_tokens": 251,
+          "total_tokens": 978
+        }
+      }
+    }
+  ]
+}

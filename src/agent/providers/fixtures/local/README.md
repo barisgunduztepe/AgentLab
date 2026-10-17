@@ -1,11 +1,18 @@
 # Gerçek Ollama yanıtları
 
-Bu dizindeki JSON dosyaları 2026-10-15'te yalnız elle çalıştırılan
+Bu dizindeki ilk iki JSON dosyası 2026-10-15'te yalnız elle çalıştırılan
 `npm run smoke:local -- --record` ile gerçek `/v1/chat/completions` yanıtlarından üretildi.
 Kaynak model, UTC kayıt tarihi ve smoke prompt sürümü dosya başlığındadır.
 
 - `qwen3-8b-2026-10-15T13-50-09-621Z.json`: metin; ardından tek çağrı/yanıt biçiminde iki calculator turu ve son yanıt (410).
 - `llama3-1-8b-2026-10-15T13-50-37-331Z.json`: metin; ardından tek yanıtta iki araç çağrısı, `invalid_tool_call` ile reddedilir.
+- `qwen3-8b-2026-10-17T11-53-27-662Z.json`: gerçek `document-calculation-v1`;
+  iki `document_search`, bir `calculator`, son yanıt. Araç sırası ve 161 doğru,
+  ancak model `RESULT` sözcüğünü ayrı satıra yazdığı için evaluation **FAIL (result format)**.
+  Bu başarılı senaryo fixture'ı değildir. Flux sonrası kullanıcı devamı üzerine,
+  aynı manuel runner `node scripts/smoke-local.mjs --scenario document-calculation-v1 --record`
+  ile `.env.local` okunmadan çalıştırıldı. Önceki timeout denemeleri raporda korunur.
+  Başlık scenario/corpus/configuration/commit ve `document-scenarios-v1` provenance taşır.
 
 Yalnız assistant content, araç çağrısı biçimi/adı/argümanları, finish_reason ve bildirilmiş token sayıları tutulur.
 Completion/tool kimlikleri normalize edilir; created sıfırlanır. system_fingerprint, reasoning/reasoning_content,
@@ -19,5 +26,7 @@ başarısız tekil llama3.1 araç yanıtının ham kaydı sağlanmadı; yeni ko�
 başarısız yanıt fixture'ı uydurulmadı. Sentetik bozuk/tekil çağrı testleri gerçek yanıt diye etiketlenmez.
 
 `local-response-replay.test.ts` yalnız sahte fetch ile bu zarfları oynatır; sunucu/model gerekmez.
+`document-response-replay.test.ts` yeni gerçek diziyi mevcut senaryo/registry ve gerçek
+araç koduyla oynatır; üç araç sonucunu, tam transcript dönüşümünü ve format FAIL'ini korur.
 Manuel kayıt betiği CI veya `npm test` tarafından çalıştırılmaz. Yeni kayıtlar mevcut dosyaları ezmez;
 review sırasında yalnız izin verilen alanları içerdiği ve doğru beklentiyle teste bağlandığı kontrol edilmelidir.
