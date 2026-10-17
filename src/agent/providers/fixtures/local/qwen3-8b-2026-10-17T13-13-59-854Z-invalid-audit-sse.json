@@ -1,0 +1,148 @@
+{
+  "source": "live-ollama-v2-sse-excerpt",
+  "capturedAt": "2026-10-17T13:13:59.854Z",
+  "scenarioId": "document-conflict-v1",
+  "model": "qwen3:8b",
+  "commit": "94d63ec",
+  "note": "Safe transport excerpt only. The raw invalid model response was not retained and is not fabricated.",
+  "run": {
+    "configurationId": "single-critic-audit-v1",
+    "id": "recorded-invalid-audit-run",
+    "status": "failed",
+    "run": {
+      "provider": "openai-compatible",
+      "model": "qwen3:8b",
+      "architecture": "single-critic",
+      "agentConfigurationId": "single-critic-audit-v1",
+      "agentConfigurationVersion": 1,
+      "commit": "94d63ec"
+    },
+    "durationMs": 21400,
+    "errorMessage": "Agent görevi tamamlayamadı.",
+    "evaluation": {
+      "passed": false,
+      "reason": "Document scenario failed: completion."
+    },
+    "historySaved": true,
+    "metrics": {
+      "modelRequested": 3,
+      "modelResponded": 3,
+      "toolStarted": 1,
+      "toolCompleted": 1,
+      "toolFailed": 0,
+      "knownTokens": {
+        "input": 1706,
+        "output": 966,
+        "total": 2672
+      },
+      "unknownUsageCalls": 0
+    },
+    "failureCode": "unknown",
+    "audit": {
+      "phase": "critic",
+      "status": "invalid_report",
+      "producerModelCalls": 2,
+      "criticModelCalls": 1
+    }
+  },
+  "events": [
+    {
+      "experimentId": "recorded-invalid-audit-run",
+      "type": "experiment.started",
+      "occurredAt": "2026-10-17T13:13:38.454Z"
+    },
+    {
+      "experimentId": "recorded-invalid-audit-run",
+      "type": "agent.started",
+      "occurredAt": "2026-10-17T13:13:38.455Z"
+    },
+    {
+      "experimentId": "recorded-invalid-audit-run",
+      "occurredAt": "2026-10-17T13:13:38.455Z",
+      "type": "model.requested",
+      "purpose": "initial"
+    },
+    {
+      "experimentId": "recorded-invalid-audit-run",
+      "occurredAt": "2026-10-17T13:13:47.461Z",
+      "type": "model.responded",
+      "outcome": "tool_call",
+      "durationMs": 9006,
+      "finishReason": "tool_call",
+      "usage": {
+        "inputTokens": 460,
+        "outputTokens": 422,
+        "totalTokens": 882
+      }
+    },
+    {
+      "experimentId": "recorded-invalid-audit-run",
+      "occurredAt": "2026-10-17T13:13:47.461Z",
+      "type": "tool.started",
+      "toolName": "document_search"
+    },
+    {
+      "experimentId": "recorded-invalid-audit-run",
+      "occurredAt": "2026-10-17T13:13:47.461Z",
+      "type": "tool.completed",
+      "toolName": "document_search"
+    },
+    {
+      "experimentId": "recorded-invalid-audit-run",
+      "occurredAt": "2026-10-17T13:13:47.461Z",
+      "type": "model.requested",
+      "purpose": "after_tool"
+    },
+    {
+      "experimentId": "recorded-invalid-audit-run",
+      "occurredAt": "2026-10-17T13:13:53.632Z",
+      "type": "model.responded",
+      "outcome": "text",
+      "durationMs": 6171,
+      "finishReason": "stop",
+      "usage": {
+        "inputTokens": 617,
+        "outputTokens": 269,
+        "totalTokens": 886
+      }
+    },
+    {
+      "experimentId": "recorded-invalid-audit-run",
+      "occurredAt": "2026-10-17T13:13:53.632Z",
+      "type": "model.requested",
+      "purpose": "initial"
+    },
+    {
+      "experimentId": "recorded-invalid-audit-run",
+      "occurredAt": "2026-10-17T13:13:59.853Z",
+      "type": "model.responded",
+      "outcome": "text",
+      "durationMs": 6221,
+      "finishReason": "stop",
+      "usage": {
+        "inputTokens": 629,
+        "outputTokens": 275,
+        "totalTokens": 904
+      }
+    },
+    {
+      "experimentId": "recorded-invalid-audit-run",
+      "type": "experiment.failed",
+      "occurredAt": "2026-10-17T13:13:59.854Z",
+      "endedAt": "2026-10-17T13:13:59.854Z",
+      "durationMs": 21400,
+      "errorMessage": "Agent görevi tamamlayamadı.",
+      "failureCode": "unknown"
+    },
+    {
+      "experimentId": "recorded-invalid-audit-run",
+      "occurredAt": "2026-10-17T13:13:59.854Z",
+      "type": "scenario.evaluated",
+      "scenarioId": "document-conflict-v1",
+      "evaluation": {
+        "passed": false,
+        "reason": "Document scenario failed: completion."
+      }
+    }
+  ]
+}

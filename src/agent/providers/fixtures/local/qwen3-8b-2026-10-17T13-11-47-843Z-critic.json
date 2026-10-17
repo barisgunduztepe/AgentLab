@@ -1,0 +1,140 @@
+{
+  "source": "live-ollama-scenario-smoke",
+  "model": "qwen3:8b",
+  "capturedAt": "2026-10-17T13:11:47.843Z",
+  "scenarioId": "document-chain-v1",
+  "corpusVersion": "agentlab-docs-v1",
+  "configurationId": "single-critic-audit-v1",
+  "configurationVersion": 1,
+  "commit": "94d63ec",
+  "promptVersion": "document-scenarios-v1",
+  "acceptance": {
+    "attempt": 1,
+    "purpose": "explicit audit fixture and byte equality",
+    "status": "completed",
+    "evaluation": {
+      "passed": true,
+      "reason": "Document result and observed tool sequence matched."
+    },
+    "auditStatus": "completed",
+    "originalOutputPreserved": true
+  },
+  "responses": [
+    {
+      "scenario": "document-chain-v1",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "recorded-call-1-1",
+                  "type": "function",
+                  "function": {
+                    "name": "document_search",
+                    "arguments": "{\"query\":\"route-amber\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 435,
+          "completion_tokens": 275,
+          "total_tokens": 710
+        }
+      },
+      "slot": "producer"
+    },
+    {
+      "scenario": "document-chain-v1",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "recorded-call-2-1",
+                  "type": "function",
+                  "function": {
+                    "name": "document_search",
+                    "arguments": "{\"query\":\"sheet-k7\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 558,
+          "completion_tokens": 350,
+          "total_tokens": 908
+        }
+      },
+      "slot": "producer"
+    },
+    {
+      "scenario": "document-chain-v1",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "RESULT destination=dock-r2; sources=route-amber, sheet-k7"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 684,
+          "completion_tokens": 135,
+          "total_tokens": 819
+        }
+      },
+      "slot": "producer"
+    },
+    {
+      "scenario": "document-chain-v1",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "{\"verdict\":\"no_issue\",\"issues\":[]}"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 643,
+          "completion_tokens": 343,
+          "total_tokens": 986
+        }
+      },
+      "slot": "critic"
+    }
+  ]
+}
