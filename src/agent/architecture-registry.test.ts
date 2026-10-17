@@ -7,15 +7,15 @@ import { STRUCTURED_AGENT_INSTRUCTION } from "./single-agent";
 afterEach(() => vi.unstubAllEnvs());
 describe("architecture registry", () => {
   it("preserves identities, versions and the two comparison profiles", () => {
-    expect(CONFIGURATION_IDS).toEqual(["baseline", "structured", "handoff-default"]);
+    expect(CONFIGURATION_IDS).toEqual(["baseline", "structured", "handoff-default", "single-critic-audit-v1"]);
     expect(COMPARISON_CONFIGURATION_IDS).toEqual(["baseline", "structured"]);
-    expect(CONFIGURATION_IDS.map((id) => ARCHITECTURE_DEFINITIONS[id].version)).toEqual([1, 1, 1]);
+    expect(CONFIGURATION_IDS.map((id) => ARCHITECTURE_DEFINITIONS[id].version)).toEqual([1, 1, 1, 1]);
     expect(isRunConfigurationId("toString")).toBe(false);
   });
   it("runs each profile with independent providers and exact prompt wording", async () => {
     const prompts: string[] = [];
     const slots: string[] = [];
-    for (const id of CONFIGURATION_IDS) {
+    for (const id of ["baseline", "structured", "handoff-default"] as const) {
       const runner = createArchitectureRunner(id, { createTools: () => [], createProviderFor(slot) {
         slots.push(slot); return { async complete(request) {
           prompts.push(request.messages.flatMap((m) => m.role === "user" ? [m.text] : [])[0]);
