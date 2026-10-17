@@ -150,7 +150,7 @@ Kural: işi güvenilir biçimde yapabilecek en ekonomik model seçilir. Tasarım
 
 **Aşama B kapanış (2026-10-17, kullanıcı devamı sonrası):** Eski smoke'un üç adımı geçti. Üç yeni gerçek qwen3 kıyasında zincir/çelişki iki profilde PASS; karma baseline PASS, structured format FAIL. Karma tekil SSE PASS; üç gerçek araç adımı, altı kıyas ve tekil SSE için birebir event–history eşitliği, aynı çiftte provider/model/commit/version/araç eşitliği, history UI ve bağımsız gerçek unmount iptali doğrulandı. Her yeni senaryoda en az bir profil PASS kapısı sağlandı. Karma smoke da doğru üç araç/161 sonucuna rağmen format FAIL verdi; gerçek fixture/replay `fb68564` bu başarısızlığı korur. 588 otomatik test geçti. **✅ yalnız bu yerel qwen3 kabul örnekleri kapsamındadır**; format güvenilirliği veya mimari üstünlük iddiası yoktur. İlk hedefli Vitest'te dotenv engeli eksikti; sonraki tam paket envDir:false ile çalıştı; ayrıntı ve son build durumu raporda. Prompt/evaluator/bütçe değişmedi. Bu ROADMAP değişikliği commit edilmez; v0.9.3a/b taslakları korunur.
 
-### ⬜ v0.9.3a Dar Critic ve çoklu karşılaştırma
+### 🟡 v0.9.3a Dar Critic ve çoklu karşılaştırma
 
 **Amaç:** Tek agent + dar sonuç denetleyen Critic (audit-only); runtime mentor ve otomatik revizyon bu deneyde yoktur. Görev, corpus, araçlar, üretici model ve deterministik başarı ölçütleri korunur; Critic verdict'i başarı kanıtı sayılmaz. Critic modeli, ek çağrı bütçesi ve bilinen/bilinmeyen kullanım açık gösterilir (ilk sürümde Critic de `qwen3:8b`; üretici ≤4 + Critic ≤1 model çağrısı, toplam üç araç). Opt-in çoklu karşılaştırma ikiden fazla yapılandırmayı destekler (ilk sürümde en çok üç: baseline, structured, Critic); eski iki-profil JSON/SSE yolu korunur. Kazanan seçilmez. Kalıcı hafıza, bilgi grafı, PentAGI/Docker/terminal araçları ve ek izleme servisleri kapsam dışıdır.
 
@@ -159,6 +159,8 @@ Kural: işi güvenilir biçimde yapabilecek en ekonomik model seçilir. Tasarım
 **Bilinen sınır (K2, onaylı):** History şeması v3 sabit kalır; Critic verdict'i kalıcı saklanmaz, yalnız canlı rapor ve kabul belgesinde görünür. v0.9.4'ten (N tekrar, başarı oranı) önce verdict'in kalıcılığı için ayrı, küçük bir history şema kararı alınmalıdır.
 
 **Açık karar (K9):** Critic'in sınırlı JSON raporu küçük yerel modelde sık bozulursa (`invalid_report`) ne yapılacağı canlı kabulden önce yazılmalıdır; prompt/evaluator habersiz değiştirilmez, sonuç 🟡 ve raporlanır.
+
+**Aşama A (2026-10-17):** C1–C4 kapsamı hazır; 690 guard'lı otomatik test, lint/typegen/TypeScript ve sıralı production build geçti. Üç belge senaryosunda üç satırlı fake UI, tekil Critic, seçim sırası ve history'de raporun saklanmadığı doğrulandı. C4 sırasında bulunan string dışı verdict kabulü ve smoke testi tip daraltma hatası kullanıcı devam onayıyla C4 içinde düzeltildi; durma/düzeltme kaydı raporda korunur. History v3 ve legacy transport korunuyor. **Aşama B bekliyor (K9)**; Ollama probe dahil canlı çağrı yapılmadı, canlı Critic/unmount kabulü tamamlandı sayılmaz. Ayrıntı: [v0.9.3a doğrulama kaydı](docs/v0.9.3a-validation.md).
 
 ### ⬜ v0.9.3b Handoff değerlendirmesi ve karşılaştırmaya katılım
 

@@ -73,6 +73,34 @@ it("invalid report fails safely once, without retry or raw text retention", asyn
   expect(JSON.stringify(result)).not.toContain("private-invalid-sentinel");
 });
 
+it.each([["no_issue"], { verdict: "no_issue" }, null, 1, true, ""])("invalid verdict %j fails once without rewriting the producer answer or evaluator", async (verdict) => {
+  const scenario = SCENARIOS[5];
+  const append = vi.fn().mockResolvedValue(undefined);
+  const producer = new FakeModelProvider(scenario.fakeByKind.single.primary);
+  const produce = vi.spyOn(producer, "complete");
+  const critic = new FakeModelProvider([{ type: "text", text: JSON.stringify({ verdict, issues: [] }) }]);
+  const audit = vi.spyOn(critic, "complete");
+  const plan = prepareRun({ task: scenario.task, scenarioId: scenario.id }, { configurationId,
+    providerFor: (slot) => slot === "critic" ? critic : producer });
+  const evaluate = vi.fn(plan.evaluate!); plan.evaluate = evaluate;
+  const result = await createRunService({ append }).executeRun(plan, { signal: signal() });
+  expect(result.experiment).toMatchObject({ status: "failed", failureCode: "unknown" });
+  expect(result.audit).toMatchObject({ status: "invalid_report", criticModelCalls: 1 });
+  expect(result.audit?.report).toBeUndefined();
+  expect(audit).toHaveBeenCalledOnce(); expect(append).toHaveBeenCalledOnce();
+  expect(result.events.filter((e) => ["experiment.completed", "experiment.failed"].includes(e.type))).toEqual([expect.objectContaining({ type: "experiment.failed", failureCode: "unknown" })]);
+  expect(evaluate).toHaveBeenCalledOnce();
+  expect(result.evaluation).toEqual(scenario.evaluate(result.experiment, result.events.filter((e) => e.type !== "scenario.evaluated")));
+  expect(result.evaluation?.passed).toBe(false); // Existing failed-run policy stays intact.
+  const answer = scenario.fakeByKind.single.primary.at(-1)!;
+  expect(await produce.mock.results.at(-1)!.value).toMatchObject(answer);
+  const data = audit.mock.calls[0][0].messages[1];
+  expect(data.role).toBe("user");
+  if (data.role !== "user" || answer.type !== "text") throw new Error("Invalid fixture");
+  expect(JSON.parse(data.text).producerAnswer).toBe(answer.text);
+  expect(append.mock.calls[0][0].output).toBeUndefined();
+});
+
 it("audit observer disconnect cancels before Critic and still finalizes once", async () => {
   const append = vi.fn().mockResolvedValue(undefined);
   const critic = new FakeModelProvider([{ type: "text", text: '{"verdict":"no_issue","issues":[]}' }]);

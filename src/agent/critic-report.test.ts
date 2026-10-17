@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { MAX_AUDIT_BYTES, parseCriticReport } from "./critic-report";
 
 describe("bounded Critic report", () => {
+  it.each([["no_issue"], { verdict: "no_issue" }, null, 1, true, ""])("rejects non-enum verdict %j without coercion", (verdict) => {
+    expect(parseCriticReport(JSON.stringify({ verdict, issues: [] }), 0)).toBeUndefined();
+  });
   it.each(["no_issue", "issues_found", "insufficient_evidence"] as const)("accepts %s without adding fields", (verdict) => {
     const value = { verdict, issues: verdict === "no_issue" ? [] : [{ kind: "evidence_gap", message: "Missing support.", evidenceId: 1 }] };
     expect(parseCriticReport(JSON.stringify(value), 1)).toEqual(value);

@@ -32,7 +32,7 @@ export function parseCriticReport(text: string, evidenceCount: number): CriticRe
   let value: unknown;
   try { value = JSON.parse(text); } catch { return; }
   if (!isRecord(value) || !exactKeys(value, ["verdict", "issues"]) ||
-      !["no_issue", "issues_found", "insufficient_evidence"].includes(String(value.verdict)) ||
+      typeof value.verdict !== "string" || !["no_issue", "issues_found", "insufficient_evidence"].includes(value.verdict) ||
       !Array.isArray(value.issues) || value.issues.length > 5 ||
       (value.verdict === "no_issue" && value.issues.length !== 0) ||
       (value.verdict === "issues_found" && value.issues.length === 0)) return;

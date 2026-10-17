@@ -6,10 +6,11 @@ import { CalculatorTool } from "../src/tools/calculator-tool";
 import { runExperiment } from "../src/experiments/run-experiment";
 import type { ExperimentEvent } from "../src/experiments/types";
 import { sanitizeLocalResponse, type LocalResponseRecording } from "./local-response-recording";
-import { getScenarioById } from "../src/experiments/scenarios";
+import { getScenarioById, comparisonConfigurations } from "../src/experiments/scenarios";
 import { createTools } from "../src/tools/tool-registry";
 import { createArchitectureRunner } from "../src/agent/architecture-registry";
-import { ARCHITECTURE_DEFINITIONS } from "../src/agent/architecture-definitions";
+import { ARCHITECTURE_DEFINITIONS, isRunConfigurationId, type RunConfigurationId } from "../src/agent/architecture-definitions";
+import type { AuditProgress } from "../src/agent/critic-report";
 import { DOCUMENT_CORPUS_VERSION } from "../src/tools/document-search-corpus";
 import { getShortCommit } from "../src/experiments/run-metadata";
 
@@ -20,19 +21,22 @@ function documentScenario(id: string) {
   return scenario;
 }
 
-export function parseSmokeArguments(args: readonly string[]): { check: boolean; record: boolean; scenarioId?: string } {
+export function parseSmokeArguments(args: readonly string[]): { check: boolean; record: boolean; scenarioId?: string; configurationId?: RunConfigurationId } {
   let check = false;
   let record = false;
   let scenarioId: string | undefined;
+  let configurationId: RunConfigurationId | undefined;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--check" && !check) check = true;
     else if (arg === "--record" && !record) record = true;
     else if (arg === "--scenario" && scenarioId === undefined && args[index + 1]) scenarioId = documentScenario(args[++index]).id;
+    else if (arg === "--configuration" && configurationId === undefined && isRunConfigurationId(args[index + 1])) configurationId = args[++index] as RunConfigurationId;
     else throw new Error("Invalid smoke options.");
   }
-  if (check && (record || scenarioId)) throw new Error("Check cannot generate or record.");
-  return { check, record, ...(scenarioId ? { scenarioId } : {}) };
+  if (check && (record || scenarioId || configurationId)) throw new Error("Check cannot generate or record.");
+  if (configurationId && (!scenarioId || !comparisonConfigurations(documentScenario(scenarioId), 2).includes(configurationId))) throw new Error("Configuration requires a compatible document scenario.");
+  return { check, record, ...(scenarioId ? { scenarioId } : {}), ...(configurationId ? { configurationId } : {}) };
 }
 
 export function requireLocalEndpoint(baseURL: string): void {
@@ -57,11 +61,13 @@ export async function probeLocalEndpoint(config: OpenAICompatibleConfiguration, 
 
 /** Executes only when called by the manual runner; importing this module never calls a model. */
 export async function runLocalSmoke(config: OpenAICompatibleConfiguration, transport: typeof fetch = fetch,
-  options: { timeoutMs?: number; cancellationDelayMs?: number; scenarioId?: string; record?: (snapshot: LocalResponseRecording) => void } = {}) {
+  options: { timeoutMs?: number; cancellationDelayMs?: number; scenarioId?: string; configurationId?: RunConfigurationId; record?: (snapshot: LocalResponseRecording) => void } = {}) {
   requireLocalEndpoint(config.baseURL);
   config = getOpenAICompatibleConfiguration({ OPENAI_COMPATIBLE_BASE_URL: config.baseURL,
     OPENAI_COMPATIBLE_MODEL: config.model, OPENAI_COMPATIBLE_API_KEY: config.apiKey });
   const selected = options.scenarioId ? documentScenario(options.scenarioId) : undefined;
+  const configurationId = options.configurationId ?? "baseline";
+  if (options.configurationId && (!selected || !comparisonConfigurations(selected, 2).includes(configurationId))) throw new Error("Unsupported smoke configuration.");
   const commit = selected ? getShortCommit() : undefined;
   const scenarios = selected ? [{ id: selected.id, task: selected.task }] : [
     { id: "text", task: "Explain in one short sentence what a thermostat does." },
@@ -77,7 +83,7 @@ export async function runLocalSmoke(config: OpenAICompatibleConfiguration, trans
     let transportAborted = false;
     const removeTransportListeners: (() => void)[] = [];
     let cancelTimer: ReturnType<typeof setTimeout> | undefined;
-    const observedFetch: typeof fetch = async (url, init) => {
+    const observedFetch = (slot: string): typeof fetch => async (url, init) => {
       const req = new Request(url, init);
       // No redirects to a cloud endpoint or another service in a local smoke run.
       if (req.url !== `${config.baseURL.replace(/\/+$/, "")}/chat/completions`) throw new Error("Unexpected smoke request.");
@@ -90,17 +96,20 @@ export async function runLocalSmoke(config: OpenAICompatibleConfiguration, trans
       const response = await pending;
       if (options.record && response.ok) {
         const snapshot = sanitizeLocalResponse(await response.clone().json(), [config.baseURL, config.apiKey ?? ""], dispatched);
-        options.record({ scenario: scenario.id, response: snapshot });
+        options.record({ scenario: scenario.id, response: snapshot, ...(configurationId === "single-critic-audit-v1" ? { slot } : {}) });
       }
       return response;
     };
-    const client = new OpenAI({ baseURL: config.baseURL, apiKey: config.apiKey ?? "agentlab-local-no-key", maxRetries: 0,
-      adminAPIKey: null, organization: null, project: null, fetch: observedFetch,
+    const createProvider = (slot: string) => {
+      const client = new OpenAI({ baseURL: config.baseURL, apiKey: config.apiKey ?? "agentlab-local-no-key", maxRetries: 0,
+      adminAPIKey: null, organization: null, project: null, fetch: observedFetch(slot),
       ...(!config.apiKey ? { defaultHeaders: { Authorization: null } } : {}),
     });
-    const provider = new RetryingModelProvider(new OpenAICompatibleModelProvider(config, client));
+      return new RetryingModelProvider(new OpenAICompatibleModelProvider(config, client));
+    };
     const tools = selected ? createTools(selected.toolIds) : scenario.id === "calculator-two-turns" ? [new CalculatorTool()] : [];
-    const runner = selected ? createArchitectureRunner("baseline", { createProviderFor: () => provider, createTools: () => tools }) : new SingleAgent(provider, tools);
+    let audit: AuditProgress | undefined;
+    const runner = selected ? createArchitectureRunner(configurationId, { createProviderFor: createProvider, createTools: () => tools, onAudit: (p) => { audit = p; } }) : new SingleAgent(createProvider("primary"), tools);
     try {
       const experiment = await runExperiment(scenario.task, runner, (event) => events.push(event), { signal: controller.signal });
       const evaluation = selected?.evaluate?.(experiment, events);
@@ -113,10 +122,11 @@ export async function runLocalSmoke(config: OpenAICompatibleConfiguration, trans
       const last = modelEvents.at(-1);
       results.push({ scenario: scenario.id, ok, status: experiment.status,
         ...(selected ? { scenarioId: selected.id, corpusVersion: DOCUMENT_CORPUS_VERSION,
-          configurationId: "baseline", configurationVersion: ARCHITECTURE_DEFINITIONS.baseline.version,
+          configurationId, configurationVersion: ARCHITECTURE_DEFINITIONS[configurationId].version,
           ...(commit ? { commit } : {}), evaluation, modelCount: modelEvents.length, toolCount,
           toolNames: events.filter((event) => event.type === "tool.completed").map((event) => event.toolName) } : {}),
         ...(experiment.failureCode ? { failureCode: experiment.failureCode } : {}),
+        ...(audit ? { audit } : {}),
         durationMs: experiment.durationMs, finishReason: last?.finishReason ?? "unknown", usage: last?.usage ?? null,
         modelCalls: modelEvents.map((event) => ({ outcome: event.outcome, durationMs: event.durationMs, finishReason: event.finishReason, usage: event.usage })),
         eventSummary: events.reduce<Record<string, number>>((counts, event) => { counts[event.type] = (counts[event.type] ?? 0) + 1; return counts; }, {}),

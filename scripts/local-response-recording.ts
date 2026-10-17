@@ -1,12 +1,12 @@
 import { DOCUMENT_CORPUS_VERSION } from "../src/tools/document-search-corpus";
-import { ARCHITECTURE_DEFINITIONS } from "../src/agent/architecture-definitions";
+import { ARCHITECTURE_DEFINITIONS, type RunConfigurationId } from "../src/agent/architecture-definitions";
 import { getShortCommit } from "../src/experiments/run-metadata";
 
-export function recordingProvenance(model: string, capturedAt: string, scenarioId?: string) {
+export function recordingProvenance(model: string, capturedAt: string, scenarioId?: string, configurationId: RunConfigurationId = "baseline") {
   if (!scenarioId) return { source: "live-ollama-smoke", model, capturedAt, promptVersion: "bf220ed" };
   const commit = getShortCommit();
   return { source: "live-ollama-scenario-smoke", model, capturedAt, scenarioId, corpusVersion: DOCUMENT_CORPUS_VERSION,
-    configurationId: "baseline", configurationVersion: ARCHITECTURE_DEFINITIONS.baseline.version,
+    configurationId, configurationVersion: ARCHITECTURE_DEFINITIONS[configurationId].version,
     ...(commit ? { commit } : {}), promptVersion: "document-scenarios-v1" };
 }
 
@@ -48,5 +48,6 @@ export function sanitizeLocalResponse(raw: unknown, secrets: readonly string[] =
 
 export interface LocalResponseRecording {
   scenario: string;
+  slot?: string;
   response: ReturnType<typeof sanitizeLocalResponse>;
 }

@@ -16,14 +16,14 @@ async function main() {
   }
   const responses: LocalResponseRecording[] = [];
   const recording = options.record;
-  const report = await runLocalSmoke(config, fetch, { scenarioId: options.scenarioId,
+  const report = await runLocalSmoke(config, fetch, { scenarioId: options.scenarioId, configurationId: options.configurationId,
     ...(recording ? { record: (response: LocalResponseRecording) => responses.push(response) } : {}) });
   if (recording && responses.length) {
     const directory = join(process.cwd(), "src/agent/providers/fixtures/local");
     await mkdir(directory, { recursive: true });
     const capturedAt = new Date().toISOString();
     const filename = `${config.model.replace(/[^a-zA-Z0-9_-]/g, "-")}-${capturedAt.replace(/[:.]/g, "-")}.json`;
-    await writeFile(join(directory, filename), JSON.stringify({ ...recordingProvenance(config.model, capturedAt, options.scenarioId),
+    await writeFile(join(directory, filename), JSON.stringify({ ...recordingProvenance(config.model, capturedAt, options.scenarioId, options.configurationId),
       responses }, null, 2) + "\n", { encoding: "utf8", flag: "wx" });
     console.log(JSON.stringify({ recording: filename, responseCount: responses.length }));
   }

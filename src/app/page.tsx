@@ -12,8 +12,13 @@ import type { PublicScenario } from "@/experiments/catalog";
 import { modelMeasurementLabel } from "@/experiments/model-event-label";
 
 import { readEventStream } from "./experiment-stream";
-import { applyComparisonFrame, type ComparisonProgress } from "./comparison-progress";
+import { applyComparisonFrame, interruptComparison, comparisonStatusLabel, type ComparisonProgress } from "./comparison-progress";
 import type { ComparisonFrame } from "@/experiments/comparison-types";
+import type { RunConfigurationId } from "@/agent/architecture-definitions";
+import type { AuditProgress } from "@/agent/critic-report";
+import type { SingleRunFrame } from "@/experiments/single-run-types";
+import { comparisonMetrics } from "@/experiments/comparison-metrics";
+import { AuditPanel, MetricsPanel } from "./audit-panel";
 
 type UiStatus = ExperimentStatus | "idle";
 /** Short provider marker; fake runs are highlighted so they are never mistaken for real model runs. */
@@ -122,13 +127,17 @@ export default function Home() {
   const [catalogRevision, setCatalogRevision] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    void fetch("/api/experiments", { signal: controller.signal })
+    void fetch("/api/experiments?comparisonVersion=2", { signal: controller.signal })
       .then(async (response) => { if (!response.ok) throw new Error(); return await response.json() as { scenarios: PublicScenario[] }; })
       .then((body) => { if (!controller.signal.aborted) { setScenarios(body.scenarios); setCatalogError(false); } })
       .catch(() => { if (!controller.signal.aborted) setCatalogError(true); });
     return () => controller.abort();
   }, [catalogRevision]);
-  const comparableScenarioIds = new Set<string>(scenarios.filter((s) => s.comparisonConfigurations.length === 2).map((s) => s.id));
+  const comparableScenarioIds = new Set<string>(scenarios.filter((s) => s.comparisonConfigurations.length >= 2).map((s) => s.id));
+  const [configurationIds, setConfigurationIds] = useState<RunConfigurationId[]>([]);
+  const [singleConfigurationId, setSingleConfigurationId] = useState<RunConfigurationId | "">("");
+  const [singleAudit, setSingleAudit] = useState<AuditProgress>();
+  const [singleRun, setSingleRun] = useState<ExperimentRunMetadata>();
   const [task, setTask] = useState("");
   const [selectedScenarioId, setSelectedScenarioId] = useState("");
   const [status, setStatus] = useState<UiStatus>("idle");
@@ -218,7 +227,7 @@ export default function Home() {
     event.preventDefault();
     const submittedTask = task.trim();
 
-    if ((!selectedScenarioId && !submittedTask) || status === "running") {
+    if ((!selectedScenarioId && !submittedTask) || status === "running" || comparisonLoading) {
       return;
     }
 
@@ -229,6 +238,7 @@ export default function Home() {
     setOutput(null);
     setErrorMessage(null);
     setEvaluation(null);
+    setSingleAudit(undefined); setSingleRun(undefined);
     setStatus("running");
 
     const controller = new AbortController();
@@ -238,7 +248,8 @@ export default function Home() {
         signal: controller.signal,
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(selectedScenarioId ? { scenarioId: selectedScenarioId } : { task: submittedTask }),
+        body: JSON.stringify(selectedScenarioId ? { scenarioId: selectedScenarioId,
+          ...(singleConfigurationId ? { runVersion: 2, configurationId: singleConfigurationId } : {}) } : { task: submittedTask }),
       });
 
       if (!response.ok) {
@@ -260,8 +271,18 @@ export default function Home() {
       }
 
       let receivedFinalEvent = false;
-      await readEventStream<ExperimentEvent>(response, controller.signal, (experimentEvent) => {
+      let receivedRunFinished = false;
+      await readEventStream<ExperimentEvent | SingleRunFrame>(response, controller.signal, (frame) => {
         if (activeExperiment.current !== controller) return;
+        if (frame.type === "run.started") { setSingleRun(frame.run); return; }
+        if (frame.type === "run.audit") { setSingleAudit(frame.audit); return; }
+        if (frame.type === "run.finished") {
+          receivedRunFinished = true;
+          setSingleRun(frame.result.run); setSingleAudit(frame.result.audit);
+          if (!frame.result.historySaved) setErrorMessage("Koşu sonucu alındı; history kaydedilemedi.");
+          return;
+        }
+        const experimentEvent = frame.type === "run.event" ? frame.event : frame;
         setEvents((currentEvents) => [...currentEvents, experimentEvent]);
         switch (experimentEvent.type) {
           case "experiment.started":
@@ -294,13 +315,13 @@ export default function Home() {
       });
       if (!controller.signal.aborted) await refreshHistory();
 
-      if (!receivedFinalEvent && !controller.signal.aborted) {
-        setErrorMessage("The event stream ended before the experiment finished.");
+      if ((!receivedFinalEvent || (singleConfigurationId && !receivedRunFinished)) && !controller.signal.aborted) {
+        setErrorMessage("Bağlantı kesildi / sonuç veya kayıt durumu bilinmiyor. History üzerinden kontrol edin.");
         setStatus("failed");
       }
     } catch {
       if (!controller.signal.aborted) {
-        setErrorMessage("The experiment could not be completed because the event stream failed.");
+        setErrorMessage("Bağlantı kesildi / sonuç bilinmiyor. History üzerinden kontrol edin.");
         setStatus("failed");
       }
     } finally {
@@ -310,7 +331,7 @@ export default function Home() {
   }
 
   async function handleComparison() {
-    if (!selectedScenarioId || !comparableScenarioIds.has(selectedScenarioId) || isRunning || comparisonLoading) return;
+    if (!selectedScenarioId || !comparableScenarioIds.has(selectedScenarioId) || configurationIds.length < 2 || isRunning || comparisonLoading) return;
     setComparisonLoading(true); setComparisonError(null); setComparisonProgress(null);
     const controller = new AbortController(); activeComparison.current = controller;
     let finished = false;
@@ -318,7 +339,7 @@ export default function Home() {
     try {
       const response = await fetch("/api/experiments/compare", {
         signal: controller.signal, method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ scenarioId: selectedScenarioId }),
+        body: JSON.stringify({ scenarioId: selectedScenarioId, comparisonVersion: 2, configurationIds }),
       });
       if (!response.ok) throw new Error();
       await readEventStream<ComparisonFrame>(response, controller.signal, (frame) => {
@@ -328,8 +349,9 @@ export default function Home() {
       });
       if (!finished && !controller.signal.aborted) throw new Error("Incomplete stream.");
     } catch {
-      if (!controller.signal.aborted) setComparisonError("The comparison stream ended before completion. Partial results are retained.");
+      if (!controller.signal.aborted) setComparisonError("Bağlantı kesildi / sonuç bilinmiyor. Alınmış sonuçlar korunuyor; history üzerinden kontrol edin.");
     } finally {
+      if (!finished && activeComparison.current === controller) setComparisonProgress(interruptComparison(progress));
       if (!controller.signal.aborted) { setComparisonLoading(false); await refreshHistory(); }
       controller.abort(); if (activeComparison.current === controller) activeComparison.current = null;
     }
@@ -337,7 +359,7 @@ export default function Home() {
 
   const isRunning = status === "running";
   const selectedScenario = scenarios.find((scenario) => scenario.id === selectedScenarioId);
-  const comparisonLabels = selectedScenario?.comparisonConfigurations.map((item) => item.label).join(" / ");
+  const comparisonLabels = configurationIds.map((id) => selectedScenario?.comparisonConfigurations.find((item) => item.id === id)?.label).join(" / ");
   const comparisonResult = comparisonProgress && { comparisonId: comparisonProgress.comparisonId,
     runs: comparisonProgress.rows.map((row) => ({ ...row, id: row.id ?? row.configurationId, historySaved: row.result?.historySaved ?? false,
       durationMs: row.result?.durationMs, evaluation: row.result?.evaluation })) };
@@ -378,6 +400,8 @@ export default function Home() {
           value={selectedScenarioId}
           onChange={(event) => {
             setSelectedScenarioId(event.target.value);
+            setConfigurationIds(scenarios.find((s) => s.id === event.target.value)?.comparisonConfigurations.map((item) => item.id) ?? []);
+            setSingleConfigurationId("");
             setEvaluation(null);
             setComparisonProgress(null);
             setComparisonError(null);
@@ -431,10 +455,22 @@ export default function Home() {
         )}
         {selectedScenarioId && comparableScenarioIds.has(selectedScenarioId) && (
           <div style={{ marginTop: 12 }}>
-            <button type="button" onClick={() => void handleComparison()} disabled={isRunning || comparisonLoading}
+            <fieldset disabled={isRunning || comparisonLoading}>
+              <legend>Karşılaştırma seçimi (2–4; işaretleme sırası yürütme sırasıdır)</legend>
+              {selectedScenario?.comparisonConfigurations.map((item) => <label key={item.id} style={{ display: "block" }}>
+                <input type="checkbox" checked={configurationIds.includes(item.id)} onChange={(event) => setConfigurationIds((ids) => event.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id))} /> {item.label}
+              </label>)}
+              <p>Sıra: {comparisonLabels || "Seçim yok"}</p>
+            </fieldset>
+            <button type="button" onClick={() => void handleComparison()} disabled={isRunning || comparisonLoading || configurationIds.length < 2 || configurationIds.length > 4}
               style={{ padding: "9px 14px", border: "1px solid #2457d6", borderRadius: 6, background: "#fff", color: "#2457d6", font: "inherit", cursor: "pointer" }}>
               {comparisonLoading ? `Running ${comparisonLabels}…` : `Run ${comparisonLabels} comparison`}
             </button>
+            {comparisonLoading && <button type="button" onClick={() => {
+              activeComparison.current?.abort(); setComparisonLoading(false);
+              setComparisonError("İptal istendi; bağlantı kapandı. Aktif koşunun sonucu bilinmiyor; history üzerinden kontrol edin.");
+              setComparisonProgress((current) => interruptComparison(current));
+            }}>Karşılaştırmayı durdur</button>}
             <p style={{ margin: "6px 0 0", color: "#536078" }}>Same scenario, provider, model, tools, and evaluator; no winner is selected.</p>
             {comparisonError && <p role="alert" style={{ color: "#8f2424" }}>{comparisonError}</p>}
             {comparisonResult && (
@@ -443,7 +479,7 @@ export default function Home() {
                 <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
                   <thead>
                     <tr>
-                      {["Configuration", "Status", "Evaluation", "Duration", "History"].map((heading) => (
+                      {["Configuration", "Status / failureCode", "Evaluation", "Duration", "History"].map((heading) => (
                         <th key={heading} style={{ padding: "6px 8px", borderBottom: "1px solid #d7dce5" }}>{heading}</th>
                       ))}
                     </tr>
@@ -452,7 +488,7 @@ export default function Home() {
                     {comparisonResult.runs.map((run) => (
                       <tr key={run.id}>
                         <td style={{ padding: "6px 8px", borderBottom: "1px solid #eef0f4" }}>{run.label}</td>
-                        <td style={{ padding: "6px 8px", borderBottom: "1px solid #eef0f4" }}>{run.status === "queued" || run.status === "persisting" ? run.status : statusLabel(run.status)}</td>
+                        <td style={{ padding: "6px 8px", borderBottom: "1px solid #eef0f4" }}>{comparisonStatusLabel(run.status)}{run.result?.failureCode ? ` · ${run.result.failureCode}` : ""}</td>
                         <td style={{ padding: "6px 8px", borderBottom: "1px solid #eef0f4" }}>
                           {run.evaluation ? (run.evaluation.passed ? "PASS" : "FAIL") : "Not evaluated"}
                         </td>
@@ -473,7 +509,13 @@ export default function Home() {
                     ))}
                   </tbody>
                 </table>
-                {comparisonResult.runs.map((run) => <details key={run.configurationId}><summary>{run.label} events ({run.events.length})</summary><ExperimentEventList events={run.events} emptyMessage="Waiting for events." /></details>)}
+                {comparisonResult.runs.map((run) => <div key={run.configurationId}>
+                  <h3>{run.label}<RunBadge run={run.run} /></h3>
+                  <MetricsPanel metrics={run.result?.metrics ?? comparisonMetrics(run.events)} />
+                  {run.configurationId === "single-critic-audit-v1" && <AuditPanel audit={run.audit} run={run.run} />}
+                  {run.result?.output && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{run.result.output.text}</pre>}
+                  <details><summary>{run.label} events ({run.events.length})</summary><ExperimentEventList events={run.events} emptyMessage="Waiting for events." /></details>
+                </div>)}
                 <p style={{ margin: "6px 0 0", color: "#536078" }}>
                   Provider: {describeRunForDisplay(comparisonResult.runs[0]?.run).provider}
                   <RunBadge run={comparisonResult.runs[0]?.run} />
@@ -485,9 +527,16 @@ export default function Home() {
             )}
           </div>
         )}
+        {selectedScenario && selectedScenario.comparisonConfigurations.length > 0 && <label style={{ display: "block", marginTop: 12 }}>
+          Tekil yapılandırma
+          <select value={singleConfigurationId} disabled={isRunning || comparisonLoading} onChange={(event) => setSingleConfigurationId(event.target.value as RunConfigurationId | "")}>
+            <option value="">Senaryo varsayılanı ({selectedScenario.defaultConfiguration.label})</option>
+            {selectedScenario.comparisonConfigurations.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+        </label>}
         <button
           type="submit"
-          disabled={isRunning || (!selectedScenarioId && task.trim().length === 0)}
+          disabled={isRunning || comparisonLoading || (!selectedScenarioId && task.trim().length === 0)}
           style={{
             marginTop: 12,
             padding: "10px 16px",
@@ -502,6 +551,10 @@ export default function Home() {
         >
           {isRunning ? "Experiment running…" : "Start Experiment"}
         </button>
+        {isRunning && <button type="button" onClick={() => {
+          activeExperiment.current?.abort(); setStatus("failed");
+          setErrorMessage("İptal istendi; bağlantı kapandı / sonuç bilinmiyor. History üzerinden kontrol edin.");
+        }}>Deneyi durdur</button>}
       </form>
 
       <section
@@ -518,6 +571,9 @@ export default function Home() {
         <p role="status" style={{ margin: 0, fontWeight: 600 }}>
           {events.some((event) => event.type === "experiment.failed" && event.failureCode === "cancelled") ? "İptal edildi" : statusLabel(status)}
         </p>
+        {singleRun && <p>{describeRunForDisplay(singleRun).description}<RunBadge run={singleRun} /></p>}
+        {events.length > 0 && <MetricsPanel metrics={comparisonMetrics(events)} />}
+        {singleAudit && <AuditPanel audit={singleAudit} run={singleRun} />}
         {(startedAt || endedAt || durationMs !== null) && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 20px", color: "#536078" }}>
             {startedAt && <span>Started: {new Date(startedAt).toLocaleString()}</span>}
@@ -687,6 +743,8 @@ export default function Home() {
                   Run: {describeRunForDisplay(historicalExperiment.run).description}
                   <RunBadge run={historicalExperiment.run} />
                 </p>
+                <MetricsPanel metrics={comparisonMetrics(historicalExperiment.events)} />
+                {historicalExperiment.run?.agentConfigurationId === "single-critic-audit-v1" && <AuditPanel historical run={historicalExperiment.run} />}
                 <p style={{ margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{historicalExperiment.task}</p>
                 <p style={{ margin: "0 0 8px", color: "#536078" }}>
                   {historicalExperiment.events.some((event) => event.type === "experiment.failed" && event.failureCode === "cancelled") ? "İptal edildi" : historicalExperiment.status} · {new Date(historicalExperiment.startedAt).toLocaleString()} – {new Date(historicalExperiment.endedAt).toLocaleString()} · {historicalExperiment.durationMs} ms

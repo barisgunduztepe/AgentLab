@@ -127,6 +127,42 @@ from their registries; the baseline architecture runs directly without history p
 cannot be combined with generation/recording options. New recordings use `document-scenarios-v1`
 prompt provenance, corpus/configuration versions and the commit; legacy recording headers stay unchanged.
 
+## Narrow Critic and opt-in comparisons (v0.9.3a — Stage A)
+
+The three document scenarios additionally support `single-critic-audit-v1`: an unchanged baseline
+producer followed by one tool-free audit using a separate provider instance with the same model.
+The Critic receives only the task, producer answer and that run's successful tool evidence. It never
+revises the answer. A valid verdict does not change deterministic PASS/FAIL. An invalid report fails
+the run safely (`unknown`, transient audit status `invalid_report`) without repair or another audit.
+Limits remain four producer calls plus one Critic call and three total tool executions; these are
+call limits, not token, time or monetary cost guarantees.
+
+Legacy catalog, single-run SSE and two-profile comparison JSON/SSE remain unchanged without opt-in.
+The UI requests `GET /api/experiments?comparisonVersion=2` and sends explicit ordered selections:
+
+```json
+{"scenarioId":"document-calculation-v1","comparisonVersion":2,"configurationIds":["baseline","structured","single-critic-audit-v1"]}
+```
+
+V2 accepts 2–4 unique enabled compatible configurations and runs them sequentially; the current
+catalog has three compatible configurations for document scenarios. No fourth architecture is added.
+V2 JSON adds event-derived metrics, failure codes and optional transient audit data; V2 SSE additionally
+emits `comparison.audit`. A single selected configuration uses `runVersion:2` with `configurationId`
+and `run.started` / `run.event` / `run.audit` / `run.finished` envelopes. The scenario default still
+uses legacy single-run SSE. The UI includes Stop controls, explicit unknown/disconnected and unstarted
+states, FAKE labels, known token subtotals and unknown usage counts. No winner or price is calculated.
+
+History schema v3 stores configuration/model identity and existing events, **not the audit report**.
+The live report disappears on reload; history details state that it was not stored. Model/tool events
+do not gain raw prompts, tool evidence or audit text. An aborted browser cannot infer the final server
+outcome; check history after stopping or disconnecting.
+
+The manual local runner now accepts `--configuration baseline|structured|single-critic-audit-v1`
+alongside an explicit document `--scenario`. Defaults stay unchanged; Critic recordings identify
+producer/Critic slots. This support was tested with synthetic HTTP only in Stage A; no local model
+probe or generation was performed. **Stage B is waiting for K9**, the user's invalid-report policy.
+See [v0.9.3a validation](docs/v0.9.3a-validation.md) for offline evidence and the parser regression fixed in C4.
+
 ## Manual local smoke (v0.8.4)
 
 Use an already installed and running loopback server with an already installed tool-capable model.
