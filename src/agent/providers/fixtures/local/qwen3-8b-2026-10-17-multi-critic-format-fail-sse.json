@@ -1,0 +1,161 @@
+{
+  "source": "live-ollama-v2-sse-excerpt",
+  "capturedAt": "2026-10-17T17:26:26.541Z",
+  "sourceCommit": "0286ea6",
+  "scenarioId": "document-conflict-multi-v1",
+  "attempt": 1,
+  "description": "Actual completed/FAIL plus no_issue audit. Safe application transport excerpt, not raw provider responses.",
+  "run": {
+    "configurationId": "single-critic-audit-v1",
+    "id": "recorded-experiment",
+    "status": "completed",
+    "run": {
+      "provider": "openai-compatible",
+      "model": "qwen3:8b",
+      "architecture": "single-critic",
+      "agentConfigurationId": "single-critic-audit-v1",
+      "agentConfigurationVersion": 1,
+      "commit": "0286ea6"
+    },
+    "durationMs": 19089,
+    "output": {
+      "type": "text",
+      "text": "The current retention period is explicitly stated in policy-saffron-current (14 days) and supersedes the archived policy-saffron-old (7 days). The current policy directly overrides the archived revision.\n\nRESULT\ndays=14; rejected_days=7; sources=policy-saffron-current,policy-saffron-old"
+    },
+    "evaluation": {
+      "passed": false,
+      "reason": "Document scenario failed: result format."
+    },
+    "historySaved": true,
+    "metrics": {
+      "modelRequested": 3,
+      "modelResponded": 3,
+      "toolStarted": 1,
+      "toolCompleted": 1,
+      "toolFailed": 0,
+      "knownTokens": {
+        "input": 1716,
+        "output": 892,
+        "total": 2608
+      },
+      "unknownUsageCalls": 0
+    },
+    "audit": {
+      "phase": "critic",
+      "status": "completed",
+      "producerModelCalls": 2,
+      "criticModelCalls": 1,
+      "report": {
+        "verdict": "no_issue",
+        "issues": []
+      }
+    }
+  },
+  "events": [
+    {
+      "experimentId": "recorded-experiment",
+      "type": "experiment.started",
+      "occurredAt": "2026-10-17T17:25:13.060Z"
+    },
+    {
+      "experimentId": "recorded-experiment",
+      "type": "agent.started",
+      "occurredAt": "2026-10-17T17:25:13.060Z"
+    },
+    {
+      "experimentId": "recorded-experiment",
+      "occurredAt": "2026-10-17T17:25:13.060Z",
+      "type": "model.requested",
+      "purpose": "initial"
+    },
+    {
+      "experimentId": "recorded-experiment",
+      "occurredAt": "2026-10-17T17:25:20.354Z",
+      "type": "model.responded",
+      "outcome": "tool_call",
+      "durationMs": 7294,
+      "finishReason": "tool_call",
+      "usage": {
+        "inputTokens": 460,
+        "outputTokens": 347,
+        "totalTokens": 807
+      }
+    },
+    {
+      "experimentId": "recorded-experiment",
+      "occurredAt": "2026-10-17T17:25:20.354Z",
+      "type": "tool.started",
+      "toolName": "document_search"
+    },
+    {
+      "experimentId": "recorded-experiment",
+      "occurredAt": "2026-10-17T17:25:20.354Z",
+      "type": "tool.completed",
+      "toolName": "document_search"
+    },
+    {
+      "experimentId": "recorded-experiment",
+      "occurredAt": "2026-10-17T17:25:20.355Z",
+      "type": "model.requested",
+      "purpose": "after_tool"
+    },
+    {
+      "experimentId": "recorded-experiment",
+      "occurredAt": "2026-10-17T17:25:27.209Z",
+      "type": "model.responded",
+      "outcome": "text",
+      "durationMs": 6854,
+      "finishReason": "stop",
+      "usage": {
+        "inputTokens": 617,
+        "outputTokens": 324,
+        "totalTokens": 941
+      }
+    },
+    {
+      "experimentId": "recorded-experiment",
+      "occurredAt": "2026-10-17T17:25:27.209Z",
+      "type": "model.requested",
+      "purpose": "initial"
+    },
+    {
+      "experimentId": "recorded-experiment",
+      "occurredAt": "2026-10-17T17:25:32.148Z",
+      "type": "model.responded",
+      "outcome": "text",
+      "durationMs": 4939,
+      "finishReason": "stop",
+      "usage": {
+        "inputTokens": 639,
+        "outputTokens": 221,
+        "totalTokens": 860
+      }
+    },
+    {
+      "experimentId": "recorded-experiment",
+      "type": "agent.completed",
+      "occurredAt": "2026-10-17T17:25:32.149Z",
+      "output": {
+        "type": "text",
+        "text": "The current retention period is explicitly stated in policy-saffron-current (14 days) and supersedes the archived policy-saffron-old (7 days). The current policy directly overrides the archived revision.\n\nRESULT\ndays=14; rejected_days=7; sources=policy-saffron-current,policy-saffron-old"
+      }
+    },
+    {
+      "experimentId": "recorded-experiment",
+      "type": "experiment.completed",
+      "occurredAt": "2026-10-17T17:25:32.149Z",
+      "endedAt": "2026-10-17T17:25:32.149Z",
+      "durationMs": 19089
+    },
+    {
+      "experimentId": "recorded-experiment",
+      "occurredAt": "2026-10-17T17:25:32.149Z",
+      "type": "scenario.evaluated",
+      "scenarioId": "document-conflict-multi-v1",
+      "evaluation": {
+        "passed": false,
+        "reason": "Document scenario failed: result format."
+      }
+    }
+  ]
+}

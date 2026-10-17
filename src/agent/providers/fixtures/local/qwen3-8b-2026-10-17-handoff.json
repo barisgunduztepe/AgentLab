@@ -1,0 +1,141 @@
+{
+  "source": "live-ollama-scenario-smoke",
+  "model": "qwen3:8b",
+  "capturedAt": "2026-10-17T17:30:30.946Z",
+  "scenarioId": "document-chain-multi-v1",
+  "corpusVersion": "agentlab-docs-v1",
+  "configurationId": "handoff-documents-v1",
+  "configurationVersion": 1,
+  "commit": "0286ea6",
+  "promptVersion": "document-scenarios-v1",
+  "acceptance": {
+    "attempt": 1,
+    "purpose": "explicit handoff fixture, note and final output byte equality",
+    "status": "completed",
+    "evaluation": {
+      "passed": true,
+      "reason": "Document result and observed tool sequence matched."
+    },
+    "noteEqual": true,
+    "outputEqual": true,
+    "finalizerTools": 0
+  },
+  "responses": [
+    {
+      "scenario": "document-chain-multi-v1",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "recorded-call-1-1",
+                  "type": "function",
+                  "function": {
+                    "name": "document_search",
+                    "arguments": "{\"query\":\"route-amber\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 534,
+          "completion_tokens": 967,
+          "total_tokens": 1501
+        }
+      },
+      "slot": "analyst"
+    },
+    {
+      "scenario": "document-chain-multi-v1",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "tool_calls",
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "recorded-call-2-1",
+                  "type": "function",
+                  "function": {
+                    "name": "document_search",
+                    "arguments": "{\"query\":\"sheet-k7\"}"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 657,
+          "completion_tokens": 219,
+          "total_tokens": 876
+        }
+      },
+      "slot": "analyst"
+    },
+    {
+      "scenario": "document-chain-multi-v1",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "RESULT destination=dock-r2; sources=route-amber,sheet-k7"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 783,
+          "completion_tokens": 267,
+          "total_tokens": 1050
+        }
+      },
+      "slot": "analyst"
+    },
+    {
+      "scenario": "document-chain-multi-v1",
+      "response": {
+        "id": "recorded-completion",
+        "object": "chat.completion",
+        "created": 0,
+        "choices": [
+          {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {
+              "role": "assistant",
+              "content": "The Analyst's evidence notes indicate that searching for \"route-amber\" leads to index \"route-amber\", which references sheet \"k7\". The destination code \"dock-r2\" is derived from sheet-k7. \n\nRESULT destination=dock-r2; sources=route-amber,sheet-k7"
+            }
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 285,
+          "completion_tokens": 409,
+          "total_tokens": 694
+        }
+      },
+      "slot": "finalizer"
+    }
+  ]
+}
