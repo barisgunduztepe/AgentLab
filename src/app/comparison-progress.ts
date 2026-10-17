@@ -17,6 +17,8 @@ export function applyComparisonFrame(state: ComparisonProgress | null, frame: Co
   const id = frame.type === "comparison.finished" ? frame.result.comparisonId : frame.comparisonId;
   if (!state || state.finished || id !== state.comparisonId) throw new Error("Unexpected comparison frame.");
   if (frame.type === "comparison.finished") return { ...state, finished: true };
+  // Transient V2 audit rendering is connected in the following UI step.
+  if (frame.type === "comparison.audit") return state;
   const configurationId = frame.type === "comparison.event" ? frame.configurationId : frame.run.configurationId;
   if (!state.rows.some((row) => row.configurationId === configurationId)) throw new Error("Unknown comparison row.");
   return { ...state, rows: state.rows.map((row) => {
