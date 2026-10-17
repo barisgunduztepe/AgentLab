@@ -93,7 +93,7 @@ no record. Storage failure does not rewrite an agent outcome or retry a model. T
 POST reconnect/retry, new architecture selector, winner, repeated sampling or Stop button in this release.
 See [v0.9.1 validation](docs/v0.9.1-validation.md) for fake UI, qwen3 HTTP evidence and tooling limits.
 
-## Document scenarios (v0.9.2, Stage A)
+## Document scenarios (v0.9.2)
 
 The catalog now contains eight scenarios, seven of which support baseline/structured comparison.
 The three new fixed scenarios use `document_search` and `calculator`: follow a document reference,
@@ -108,9 +108,12 @@ all three allowed tool executions. Prompt profiles, configuration version 1 and 
 unchanged. Tool inputs/results stay in the in-memory transcript; final answers retain their existing
 history behavior. Public catalog tools contain names/labels only.
 
-Stage A has offline fake/mock and UI evidence. Ollama refused the laptop's loopback connection;
-installed `qwen3:8b` availability could not be checked. No model was installed or downloaded. Stage B
-live acceptance and a genuinely captured mixed-scenario replay remain pending, so v0.9.2 stays 🟡.
+Stage A has offline fake/mock and UI evidence. Stage B was live-validated on the desktop with the
+existing Ollama/qwen3:8b: each new scenario had at least one passing comparison profile, with real
+tools, matching SSE/history events and UI cancellation. The mixed smoke and its structured comparison
+completed all three tools but failed the strict RESULT format; a sanitized real-response replay preserves
+that failure. Earlier timeouts are retained in the report. This is a scoped acceptance result, not a
+reliability or architecture-ranking claim. No model was installed or downloaded.
 See [v0.9.2 validation](docs/v0.9.2-validation.md) for evidence and limits.
 
 The manual runner additionally accepts an explicit new scenario, optionally recording sanitized responses:
@@ -170,7 +173,7 @@ v0.8.4 is ✅ specifically for the OpenAI-compatible adapter live-validated with
 calculator turns and client HTTP cancellation. Real-response replay runs offline. This is not a blanket
 compatibility claim: llama3.1:8b failed the single-call-per-response tool contract; its cancellation scenario
 was not reached. OpenAI Responses and Gemini Interactions remain 🟡 without live verification. HTTP abort
-does not prove server-side generation stopped; reasoning is not recorded. v0.9.1 is live-validated for the shared service and HTTP paths with qwen3:8b. **v0.9.2 Stage A** is implemented; its live Stage B remains 🟡 pending an available Ollama/qwen3:8b device.
+does not prove server-side generation stopped; reasoning is not recorded. v0.9.1 is live-validated for the shared service and HTTP paths with qwen3:8b. **v0.9.2** meets its scoped local qwen3:8b live gate; strict output-format failures remain documented.
 Automated tests never call real model endpoints. See [ROADMAP.md](ROADMAP.md) for scope and remaining work.
 
 ## License
